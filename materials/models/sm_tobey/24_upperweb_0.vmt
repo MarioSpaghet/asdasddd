@@ -1,0 +1,12 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/sm_tobey/24_upperweb_0"
+	"$bumpmap"     "models/sm_tobey/24_upperweb_1"
+
+	"$phong" "1"
+	"$phongexponent" "30"
+	"$phongboost" "1"
+	"$phongfresnelranges"	"[.5 3 48]"
+	"$halflambert" "1"
+}
+

@@ -1,0 +1,10 @@
+"VertexLitGeneric"
+{
+"$basetexture" "models/sm_tobey/24_hands_1_0_0"
+"$bumpmap" "models/sm_tobey/24_hands_1_0_1"
+"$phong" 1
+"$phongboost" "1"
+"$phongexponenttexture" "models/sm_tobey/24_hands_1_0_2"
+"$phongfresnelranges"	"[.5 3 48]"
+"$halflambert" "1"
+}

@@ -1,0 +1,11 @@
+"VertexLitGeneric"
+{
+"$basetexture" "models/sm_tobey/24_torso_1"
+"$bumpmap" "models/sm_tobey/24_torso_2"
+"$phong" 1
+"$phongboost" "1"
+"$phongexponent" "1"
+"$halflambert" "1"
+"$phongfresnelranges" "[0 0 0]"
+"$phongtint"	"[0 0 0]"
+}

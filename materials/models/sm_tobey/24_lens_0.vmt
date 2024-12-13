@@ -1,0 +1,11 @@
+"VertexLitGeneric"
+{
+"$basetexture" "models/sm_tobey/24_lens_0"
+"$envmap" "env_cubemap"
+
+"$phong" "1"
+"$phongexponent" "90"
+"$phongboost"	"1"
+"$phongfresnelranges"	"[.6 .8 .5]"
+"$ambientocclusion" "1"
+}

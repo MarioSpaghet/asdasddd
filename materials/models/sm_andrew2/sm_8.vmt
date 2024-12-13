@@ -1,0 +1,11 @@
+"VertexLitGeneric"
+{
+"$basetexture" "models/sm_andrew2/sm_8"
+"$bumpmap" "models/sm_andrew2/sm_8_N"
+"$phong" 1
+"$phongboost" "1"
+"$phongexponent" "1"
+"$halflambert" "1"
+"$phongfresnelranges" "[0 0 0]"
+"$phongtint"	"[0 0 0]"
+}

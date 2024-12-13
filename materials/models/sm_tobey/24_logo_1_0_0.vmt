@@ -1,0 +1,11 @@
+"VertexLitGeneric"
+{
+"$basetexture" "models/sm_tobey/24_logo_1_0_0"
+"$bumpmap" "models/sm_tobey/24_logo_1_0_1"
+"$phong" "1"
+"$phongboost"	"0.01"
+ "$phongexponenttexture" "models\neverstops577\spider-man\characters\suits\webbed_suit\logo_s"
+"$phongfresnelranges"	"[.5 3 48]"
+"$halflambert" "1"
+}
+
