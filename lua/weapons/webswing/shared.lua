@@ -1,4 +1,4 @@
-local ModelInfoCache
+ local ModelInfoCache
 ModelInfoCache = {
 	Info = {},
 	Exists = function(mdl)
@@ -1228,43 +1228,20 @@ function SWEP:StopWebSwing()
         return pos
     end
     
-    respawnPos = FindSafePosition(respawnPos)
-
-    ply:UnSpectate()
-    SavedWeapons.Retrieve(ply)
-
-    ply:SetPos(respawnPos)
-    ply:SetVelocity(vel)
-    ply:SetRenderMode(RENDERMODE_NORMAL)
-    
-    -- Enhanced unstuck system with corner detection
-    if SERVER then
-        local unstuckAttempts = 0
-        local function AttemptUnstuck()
-            if not IsValid(ply) or unstuckAttempts >= 5 then 
-                timer.Remove("WebShooterUnstuck_" .. ply:EntIndex())
-                return
-            end
-            
-            local tr = util.TraceHull({
-                start = ply:GetPos(),
-                endpos = ply:GetPos(),
-                mins = ply:OBBMins(),
-                maxs = ply:OBBMaxs(),
-                filter = ply,
-                mask = MASK_SOLID
-            })
-            
-            if tr.Hit then
-                local newPos = FindSafePosition(ply:GetPos())
-                ply:SetPos(newPos)
-                unstuckAttempts = unstuckAttempts + 1
-            else
-                timer.Remove("WebShooterUnstuck_" .. ply:EntIndex())
-            end
-        end
+    -- Find a safe position and set the player's position
+    local safePos = FindSafePosition(respawnPos)
+    if safePos then
+        ply:SetPos(safePos)
         
-        timer.Create("WebShooterUnstuck_" .. ply:EntIndex(), 0.1, 50, AttemptUnstuck)
+        -- Transfer ragdoll momentum to player
+        if vel:Length() > 0 then
+            -- Preserve horizontal velocity for smooth transitions
+            local horizontalVel = Vector(vel.x, vel.y, 0)
+            local verticalVel = Vector(0, 0, vel.z * 0.8) -- Slightly reduce vertical velocity for better control
+            
+            -- Set player velocity while preserving momentum
+            ply:SetVelocity(horizontalVel + verticalVel)
+        end
     end
 end
 
