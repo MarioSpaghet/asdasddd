@@ -659,9 +659,15 @@ end
 
 function SWEP:SecondaryAttack()
     if not IsFirstTimePredicted() then return end
-
+    
+    -- Prevent spamming
+    if (self.NextSwingTime or 0) > CurTime() then
+        return
+    end
+    
     if self.Owner:KeyPressed(IN_ATTACK2) then
-        -- Check for valid hit point before restricting movement
+        self.NextSwingTime = CurTime() + 0.5  -- Adjust cooldown as needed
+        
         local tr
         if GetConVar("webswing_manual_mode"):GetBool() then
             tr = util.TraceLine({
@@ -670,7 +676,6 @@ function SWEP:SecondaryAttack()
                 filter = self.Owner,
                 mask = MASK_SOLID
             })
-            -- If no hit point is found, allow player to continue falling
             if not tr.Hit then return end
         else
             local bestPoint = self:FindPotentialSwingPoints()
@@ -684,8 +689,7 @@ function SWEP:SecondaryAttack()
                 PhysicsBone = 0
             }
         end
-
-        -- Only restrict movement if we have a valid swing point
+        
         if SERVER then
             self.Owner.OriginalNoclipSpeed = self.Owner:GetNWFloat("sv_noclipspeed", 5)
             self.Owner:SetNWFloat("sv_noclipspeed", 0)
@@ -694,7 +698,6 @@ function SWEP:SecondaryAttack()
             net.Send(self.Owner)
         end
         
-        -- Add movement restriction only if we have a valid point
         hook.Add("Move", "WebSwing_NoclipSpeed_" .. self.Owner:EntIndex(), function(moveply, mv)
             if moveply == self.Owner then
                 mv:SetVelocity(Vector(0, 0, 0))
@@ -703,6 +706,7 @@ function SWEP:SecondaryAttack()
         end)
         
         self:StartWebSwing(tr)
+        
     elseif self.Owner:KeyReleased(IN_ATTACK2) then
         self:StopWebSwing()
     end
@@ -710,87 +714,71 @@ end
 
 function SWEP:StartWebSwing(tr)
     if self.RagdollActive then return end
-    if not self.Owner then return end
+    if not IsValid(self.Owner) then return end
+    
     local ply = self.Owner
-    
-    self:SetNextPrimaryFire(CurTime() + 0.1)
-    
+    -- Ensure we have a valid trace
     if not tr or not tr.Hit then return end
-    
-    -- Ensure tr.Entity exists
     tr.Entity = tr.Entity or game.GetWorld()
-    
+
+    -- Make sure we respect the swing range
     local maxRange = GetConVar("webswing_manual_mode"):GetBool() and self.BaseRange or self.Range
-    if tr.HitPos:Distance(tr.StartPos or self.Owner:EyePos()) >= maxRange then return end
-    
-    if hook.Run("CanTool", ply, tr, "webswing") == false then
-        return
-    end
-    
+    if tr.HitPos:Distance(tr.StartPos or ply:EyePos()) >= maxRange then return end
+
+    -- Sound fatigue system
     if SERVER then
-        -- Initialize sound variables if they don't exist
         self.LastWebSoundTime = self.LastWebSoundTime or CurTime()
         self.WebSoundCount = self.WebSoundCount or 0
-        
-        -- Sound fatigue system
         local currentTime = CurTime()
         local timeSinceLastSound = currentTime - self.LastWebSoundTime
-        
-        -- Reset sound count if enough time has passed
         if timeSinceLastSound > self.WebSoundResetTime then
             self.WebSoundCount = 0
         end
-        
-        -- Only play sound if cooldown has passed
         if timeSinceLastSound > self.WebSoundCooldown then
-            -- Increment sound count
             self.WebSoundCount = self.WebSoundCount + 1
             self.LastWebSoundTime = currentTime
-            
-            -- Calculate volume and pitch based on fatigue
             local volume = math.Clamp(1 - (self.WebSoundCount / self.MaxWebSoundCount) * 0.3, 0.7, 1)
-            -- Adjusted pitch range to 95-110
             local pitch = math.Clamp(100 + math.random(-5, 10) - (self.WebSoundCount * 2), 95, 110)
-            
-            -- Play the sound with varied parameters
             local soundNumber = math.random(1, 3)
             ply:EmitSound("webshooters/web_shoot" .. soundNumber .. ".wav", 75, pitch, volume)
         end
     end
-    
+
     self.RagdollActive = true
     self:ShootEffects(self)
-    
-    if (!SERVER) then return end
-    
-    -- Web decal feature
+    if CLIENT then return end
+
+    -- Optional web decal
     if SERVER then
-        local webDecal = "decals/spiderman_web"
-        util.Decal(webDecal, tr.HitPos + tr.HitNormal, tr.HitPos - tr.HitNormal)
+        util.Decal("decals/spiderman_web", tr.HitPos + tr.HitNormal, tr.HitPos - tr.HitNormal)
     end
-    
+
     self:SetNetworkedBool("wt_ragdollactive", true)
-    
-    local OldBoneScale = ply:GetModelScale()
+
+    -- Cache the player's current velocity so we can preserve inertia
+    local currentVelocity = ply:GetVelocity()
+
+    local originalScale = ply:GetModelScale()
     ply:SetModelScale(1, 0)
-    
-    local Data = duplicator.CopyEntTable(ply)
+
+    local data = duplicator.CopyEntTable(ply)
     local ragdoll = ents.Create("prop_ragdoll")
     if not IsValid(ragdoll) then return end
-    duplicator.DoGeneric(ragdoll, Data)
+
+    duplicator.DoGeneric(ragdoll, data)
     ragdoll:Spawn()
     ragdoll:Activate()
-    
-    -- Standardize the mass of all physics objects in the ragdoll
+
+    -- Standardize mass if desired
     for i = 0, ragdoll:GetPhysicsObjectCount() - 1 do
-        local phys = ragdoll:GetPhysicsObjectNum(i)
-        if phys:IsValid() then
-            phys:SetMass(STANDARD_RAGDOLL_MASS)
+        local physObj = ragdoll:GetPhysicsObjectNum(i)
+        if IsValid(physObj) then
+            physObj:SetMass(STANDARD_RAGDOLL_MASS or 1)
         end
     end
-    
-    ply:SetModelScale(OldBoneScale, 0)
-    
+
+    ply:SetModelScale(originalScale, 0)
+
     if isfunction(ragdoll.CPPISetOwner) then
         ragdoll:CPPISetOwner(ply)
     else
@@ -798,121 +786,84 @@ function SWEP:StartWebSwing(tr)
         ragdoll.OwnerID = ply:SteamID()
     end
 
+    -- Transfer the player's velocity to all ragdoll bodies
+    local physCount = ragdoll:GetPhysicsObjectCount()
+    for i = 0, physCount - 1 do
+        local boneIndex = ragdoll:TranslatePhysBoneToBone(i)
+        if boneIndex then
+            local physObj = ragdoll:GetPhysicsObjectNum(i)
+            if IsValid(physObj) then
+                local bonePos, boneAng = ply:GetBonePosition(boneIndex)
+                physObj:SetPos(bonePos)
+                physObj:SetAngles(boneAng)
+                physObj:AddVelocity(currentVelocity)
+            end
+        end
+    end
+
+    -- Figure out which bone to attach the rope/spring to
+    local targetPhysObj = self:GetTargetBone()
+    local bonePos = ragdoll:GetPos()
+    local foundBonePos = false
     local vel = ply:GetVelocity()
 
-    local targetPhysObj = self:GetTargetBone()
-    local targetBone = 0
-    local targetFound = false
-    local bonePos, boneAng, bonePosL
-    
-    bonePos = ragdoll:GetPos()
-    
-    local iNumPhysObjects = ragdoll:GetPhysicsObjectCount()
-    for Bone = 0, iNumPhysObjects - 1 do
-        local PhysObj = ragdoll:GetPhysicsObjectNum(Bone)
-        if (PhysObj:IsValid()) then
-            local boneid = ragdoll:TranslatePhysBoneToBone(Bone)
-            local Pos, Ang = ply:GetBonePosition(boneid)
-            PhysObj:SetPos(Pos)
-            PhysObj:SetAngles(Ang)
-            PhysObj:AddVelocity(vel)
-            if Bone == targetPhysObj then
-                bonePos, boneAng = Pos, Ang
-                bonePosL = PhysObj:LocalToWorld(Vector(0, 0, 0))
-                targetBone = Bone
-                targetFound = true
-                break
-            end
+    for i = 0, physCount - 1 do
+        if i == targetPhysObj then
+            local boneIndex = ragdoll:TranslatePhysBoneToBone(i)
+            local Pos, Ang = ply:GetBonePosition(boneIndex)
+            bonePos = Pos
+            foundBonePos = true
+            break
         end
     end
-
-    if not targetFound then
+    if not foundBonePos then
         bonePos = ragdoll:GetPos()
-        targetBone = 0
     end
 
+    -- Decide if we use rope or elastic
     local useRope = ply:KeyDown(IN_USE)
-    
-    if not useRope then
-        local class = IsValid(tr.Entity) and tr.Entity:GetClass() or ""
-        if class == "prop_ragdoll" then
-            local IsOk = false
-            local Phys = tr.Entity:GetPhysicsObject()
-            if IsValid(Phys) then
-                if Phys:IsGravityEnabled() then
-                    IsOk = true
-                end
-            end
-            if not IsOk then
-                useRope = true
-            end
+    local dist = math.floor(bonePos:Distance(tr.HitPos))
+    local attachEntity = tr.Entity
+    local attachBone = 0
+    local attachPos = (attachEntity:EntIndex() ~= 0)
+        and (tr.HitPos - attachEntity:GetPos()) or tr.HitPos
+
+    if IsValid(attachEntity) and attachEntity:GetClass() == "prop_ragdoll" then
+        attachBone = tr.PhysicsBone or 0
+        local entPhys = attachEntity:GetPhysicsObjectNum(attachBone)
+        if IsValid(entPhys) then
+            attachPos = entPhys:WorldToLocal(tr.HitPos)
         end
     end
-    
+
     ply:SetParent(ragdoll)
+    -- Removing any forced zero velocity here
     ply:SetMoveType(MOVETYPE_NOCLIP)
-    ply:SetVelocity(Vector(0, 0, 0))
-    if SERVER then
-        -- Store the player's original noclip speed
-        ply.OriginalNoclipSpeed = ply:GetNWFloat("sv_noclipspeed", 5)
-        
-        -- Set personal noclip speed to 0 immediately (removed delay)
-        ply:SetNWFloat("sv_noclipspeed", 0)
-        
-        -- Override the player's movement without delay
-        hook.Add("Move", "WebSwing_NoclipSpeed_" .. ply:EntIndex(), function(moveply, mv)
-            if moveply == ply and ply.WT_webswing_Roping then
-                mv:SetVelocity(Vector(0, 0, 0))
-                return true
-            end
-        end)
-    end
-    ply:SpectateEntity(ragdoll)
-    
-    -- Add this line to keep the HUD visible
+
+    -- Hide player model
+    ply:SetNoDraw(true)
     ply:DrawWorldModel(false)
-    
+    ply:SetRenderMode(RENDERMODE_TRANSALPHA)
+    ply:SetColor(Color(255, 255, 255, 0))
+
     ragdoll.DontAllowRemoval = true
     ragdoll.DontAllowRape = true
     ply.WT_webswing_Roping = true
     self.Ragdoll = ragdoll
-    
-    local TimerID = "" .. CurTime() .. "/" .. math.random() .. "/" .. math.random(100)
-    timer.Create(TimerID, 1 + math.random(), 0, function()
-        if not IsValid(ply) then
-            SafeRemoveEntity(ragdoll)
-            timer.Destroy(TimerID)
-        end
-    end)
-    
-    local LPos1, LPos2
-    LPos1 = Vector(0, 0, 0)
-    LPos2 = (tr.Entity:EntIndex() ~= 0) and (tr.HitPos - tr.Entity:GetPos()) or tr.HitPos
-    local WPos1, WPos2 = bonePos, tr.HitPos
-    local Distance = math.floor(WPos1:Distance(WPos2))
-    local EndBoneID = 0
-    local EndPhysBoneObj
-    if IsValid(tr.Entity) and tr.Entity:GetClass() == "prop_ragdoll" then
-        local EndPhysBoneIndex = tr.PhysicsBone or 0
-        EndPhysBoneObj = tr.Entity:GetPhysicsObjectNum(EndPhysBoneIndex)
-        EndBoneID = EndPhysBoneIndex
-        LPos2 = EndPhysBoneObj:WorldToLocal(WPos2)
-    end
-    
-    -- Retrieve the selected rope material from the ConVar
-    local ropeMaterial = GetConVar("webswing_rope_material"):GetString()
 
-    -- Set rope width based on material
-    local ropeWidth = 2  -- Default width for other materials
-    if ropeMaterial == "cable/redlaser" then
-        ropeWidth = 5  -- Slightly increased width for 'cable/redlaser'
-    elseif ropeMaterial == "cable/rope" then
-        ropeWidth = 1  -- Even thinner for 'cable/rope'
-     elseif ropeMaterial == "cable/cable2" then
-        ropeWidth = 1.25  -- Even thinner for 'cable/cable2'
+    ply:SpectateEntity(ragdoll)
+
+    -- Decide rope material
+    local ropeMat = GetConVar("webswing_rope_material"):GetString() or "cable/xbeam"
+    local ropeWidth = 2
+    if ropeMat == "cable/redlaser" then
+        ropeWidth = 5
+    elseif ropeMat == "cable/rope" then
+        ropeWidth = 1
+    elseif ropeMat == "cable/cable2" then
+        ropeWidth = 1.25
     end
 
-    -- Get color and alpha values from ConVars
     local ropeColor = Color(
         GetConVar("webswing_rope_color_r"):GetInt(),
         GetConVar("webswing_rope_color_g"):GetInt(),
@@ -921,138 +872,95 @@ function SWEP:StartWebSwing(tr)
     )
 
     if useRope then
-        local length_constraint, rope = constraint.Rope(
-            ragdoll, tr.Entity, targetBone, EndBoneID,
-            LPos1, LPos2, 0, Distance * 0.95, 0, ropeWidth,
-            ropeMaterial, false
+        local lengthConstraint, ropeEntity = constraint.Rope(
+            ragdoll, attachEntity,
+            targetPhysObj, attachBone,
+            Vector(0, 0, 0), attachPos,
+            0, dist * 0.95, 0, ropeWidth,
+            ropeMat, false
         )
-
-        if rope then
-            rope:SetKeyValue('spawnflags', '1')
-            rope:SetKeyValue('minCPULevel', '0')
-            rope:SetKeyValue('maxCPULevel', '0')
-            rope:SetKeyValue('updaterate', '1')
-            -- Enhanced alpha and rendering settings
-            rope:SetRenderMode(RENDERMODE_TRANSALPHA)
-            rope:SetColor(ropeColor)
-            rope:SetKeyValue('renderamt', tostring(ropeColor.a))
-            rope:SetKeyValue('rendercolor', string.format("%d %d %d", ropeColor.r, ropeColor.g, ropeColor.b))
-            rope:SetKeyValue('rendermode', '5') -- 5 is RENDERMODE_TRANSCOLOR for better alpha handling
-            rope:SetKeyValue('renderorder', '1') -- Higher render order to ensure proper layering
-            rope:SetMaterial(ropeMaterial)
-            rope:DrawShadow(false)
-        else
-            print("Error: Failed to create rope.")
-            self.RagdollActive = false
-            return
+        if ropeEntity then
+            ropeEntity:SetKeyValue("spawnflags", "1")
+            ropeEntity:SetRenderMode(RENDERMODE_TRANSALPHA)
+            ropeEntity:SetColor(ropeColor)
+            ropeEntity:SetMaterial(ropeMat)
         end
-
-        if length_constraint then
+        if lengthConstraint and ropeEntity then
             self.ConstraintController = {
-                current_length = Distance * 0.95,
-                constraint = length_constraint,
-                rope = rope,
+                current_length = dist * 0.95,
+                constraint = lengthConstraint,
+                rope = ropeEntity,
                 speed = 5,
-                Set = function(self)
-                    if IsValid(self.constraint) then self.constraint:Fire("SetLength", self.current_length, 0) end
-                    if IsValid(self.rope) then self.rope:Fire("SetLength", self.current_length, 0) end
+                Set = function(ctrl)
+                    if IsValid(ctrl.constraint) then
+                        ctrl.constraint:Fire("SetLength", ctrl.current_length, 0)
+                    end
+                    if IsValid(ctrl.rope) then
+                        ctrl.rope:Fire("SetLength", ctrl.current_length, 0)
+                    end
                 end,
-                Shorten = function(self)
-                    self.current_length = math.Clamp(self.current_length - self.speed, self.min_length, self.max_length)
-                    self:Set()
+                Shorten = function(ctrl)
+                    ctrl.current_length = math.max(ctrl.current_length - ctrl.speed, 10)
+                    ctrl:Set()
                 end,
-                Slacken = function(self)
-                    self.current_length = math.Clamp(self.current_length + self.speed, self.min_length, self.max_length)
-                    self:Set()
+                Slacken = function(ctrl)
+                    ctrl.current_length = math.min(ctrl.current_length + ctrl.speed, self.Range)
+                    ctrl:Set()
                 end
             }
             self.ConstraintController:Set()
         else
-            print("Error: Failed to create length constraint.")
             self.RagdollActive = false
             return
         end
     else
         local const, damp = CalcElasticConstant(
-            ragdoll:GetPhysicsObjectNum(targetBone),
-            tr.Entity:GetPhysicsObjectNum(EndBoneID),
-            ragdoll, tr.Entity
+            ragdoll:GetPhysicsObjectNum(targetPhysObj),
+            attachEntity:GetPhysicsObjectNum(attachBone),
+            ragdoll, attachEntity
         )
-
-        local spring_constraint, rope = constraint.Elastic(
-            ragdoll, tr.Entity, targetBone, EndBoneID,
-            LPos1, LPos2, const * 5, damp * 5, 0,
-            ropeMaterial, ropeWidth, true
+        local springConstraint, ropeEntity = constraint.Elastic(
+            ragdoll, attachEntity,
+            targetPhysObj, attachBone,
+            Vector(0, 0, 0), attachPos,
+            const * 5, damp * 5, 0,
+            ropeMat, ropeWidth, true
         )
-
-        if rope then
-            rope:SetKeyValue('spawnflags', '1')
-            rope:SetKeyValue('minCPULevel', '0')
-            rope:SetKeyValue('maxCPULevel', '0')
-            rope:SetKeyValue('updaterate', '1')
-            rope:SetKeyValue('collide', '0')
-            -- Enhanced alpha and rendering settings
-            rope:SetRenderMode(RENDERMODE_TRANSALPHA)
-            rope:SetColor(ropeColor)
-            rope:SetKeyValue('renderamt', tostring(ropeColor.a))
-            rope:SetKeyValue('rendercolor', string.format("%d %d %d", ropeColor.r, ropeColor.g, ropeColor.b))
-            rope:SetKeyValue('rendermode', '5') -- 5 is RENDERMODE_TRANSCOLOR for better alpha handling
-            rope:SetKeyValue('renderorder', '1') -- Higher render order to ensure proper layering
-            rope:SetMaterial(ropeMaterial)
-            rope:DrawShadow(false)
-        else
-            print("Error: Failed to create elastic rope.")
+        if ropeEntity then
+            ropeEntity:SetKeyValue("spawnflags", "1")
+            ropeEntity:SetRenderMode(RENDERMODE_TRANSALPHA)
+            ropeEntity:SetColor(ropeColor)
+            ropeEntity:SetMaterial(ropeMat)
         end
-
-        if spring_constraint then
-            spring_constraint:SetKeyValue('spawnflags', '1')
-            spring_constraint:SetKeyValue('minCPULevel', '0')
-            spring_constraint:SetKeyValue('maxCPULevel', '0')
-        else
-            print("Error: Failed to create spring constraint.")
-        end
-
-        if spring_constraint and rope then
+        if springConstraint and ropeEntity then
             self.ConstraintController = {
-                current_length = Distance * 0.95,
+                current_length = dist * 0.95,
                 min_length = 10,
                 max_length = self.Range,
-                constraint = spring_constraint,
-                rope = rope,
+                constraint = springConstraint,
+                rope = ropeEntity,
                 speed = 5,
-                Set = function(self)
-                    if IsValid(self.constraint) then self.constraint:Fire("SetSpringLength", self.current_length, 0) end
-                    if IsValid(self.rope) then self.rope:Fire("SetLength", self.current_length, 0) end
+                Set = function(ctrl)
+                    if IsValid(ctrl.constraint) then
+                        ctrl.constraint:Fire("SetSpringLength", ctrl.current_length, 0)
+                    end
+                    if IsValid(ctrl.rope) then
+                        ctrl.rope:Fire("SetLength", ctrl.current_length, 0)
+                    end
                 end,
-                Shorten = function(self)
-                    self.current_length = math.Clamp(self.current_length - self.speed, self.min_length, self.max_length)
-                    self:Set()
+                Shorten = function(ctrl)
+                    ctrl.current_length = math.max(ctrl.current_length - ctrl.speed, ctrl.min_length)
+                    ctrl:Set()
                 end,
-                Slacken = function(self)
-                    self.current_length = math.Clamp(self.current_length + self.speed, self.min_length, self.max_length)
-                    self:Set()
+                Slacken = function(ctrl)
+                    ctrl.current_length = math.min(ctrl.current_length + ctrl.speed, ctrl.max_length)
+                    ctrl:Set()
                 end
             }
             self.ConstraintController:Set()
         else
-            print("Error: Failed to create spring constraint or elastic rope.")
             self.RagdollActive = false
             return
-        end
-    end
-
-    -- Make player invisible
-    if SERVER then
-        ply:SetNoDraw(true)  -- Makes the player model invisible
-        ply:DrawWorldModel(false)
-        ply:SetRenderMode(RENDERMODE_TRANSALPHA)
-        ply:SetColor(Color(255, 255, 255, 0))  -- Make fully transparent
-        
-        -- Also handle any potential accessories or other attached entities
-        for _, ent in pairs(ents.FindByClass("prop_physics")) do
-            if ent:GetParent() == ply then
-                ent:SetNoDraw(true)
-            end
         end
     end
 end
@@ -1415,92 +1323,49 @@ function SWEP:FindPotentialSwingPoints()
     local ply = self.Owner
     if not IsValid(ply) then return nil end
     
-    -- Initialize MapAnalysis if it doesn't exist
-    if not self.MapAnalysis then
-        self.MapAnalysis = {
-            analyzed = false,
-            averageHeight = 500,  -- Default values
-            buildingDensity = 0.5,
-            openSpaceRatio = 0.5
-        }
-    end
+    -- Example changes to improve AI target selection based on speed, height, and obstacles:
     
-    -- Analyze map if not already done
-    if not self.MapAnalysis.analyzed then
-        self:AnalyzeMap()
-    end
-    
+    -- Reduce search radius and detect obstacles
     local eyePos = ply:EyePos()
     local forward = ply:GetAimVector()
     local right = forward:Cross(Vector(0, 0, 1))
     local up = right:Cross(forward)
     
-    -- Get player's current velocity for momentum calculations
+    -- Player velocity and ground check
     local playerVel = ply:GetVelocity()
     local speedSqr = playerVel:LengthSqr()
-    
-    -- Check for ceiling above player
-    local ceilingTrace = util.TraceLine({
-        start = eyePos,
-        endpos = eyePos + Vector(0, 0, 500),
+    local groundTrace = util.TraceLine({
+        start = ply:GetPos(),
+        endpos = ply:GetPos() - Vector(0, 0, 9999),
         filter = ply,
         mask = MASK_SOLID
     })
+    local groundDist = (ply:GetPos().z - groundTrace.HitPos.z)
     
-    local hasCeiling = ceilingTrace.Hit
-    local ceilingPoint = nil
-    if hasCeiling then
-        -- Find best point on ceiling
-        local ceilingRadius = 300  -- Search radius for ceiling points
-        local bestCeilingScore = -1
-        
-        for i = 1, 8 do
-            local angle = math.rad(((i - 1) / 8) * 360)
-            local offset = Vector(
-                math.cos(angle) * ceilingRadius,
-                math.sin(angle) * ceilingRadius,
-                0
-            )
-            
-            local ceilingCheck = util.TraceLine({
-                start = eyePos + Vector(0, 0, 200),  -- Start above player
-                endpos = ceilingTrace.HitPos + offset,
-                filter = ply,
-                mask = MASK_SOLID
-            })
-            
-            if ceilingCheck.Hit then
-                local score = self:EvaluateSwingPoint(ceilingCheck.HitPos, eyePos, playerVel, false, speedSqr, true)
-                if score > bestCeilingScore then
-                    bestCeilingScore = score
-                    ceilingPoint = {
-                        pos = ceilingCheck.HitPos,
-                        normal = ceilingCheck.HitNormal,
-                        entity = ceilingCheck.Entity,
-                        score = score,
-                        isCorner = false,
-                        isCeiling = true
-                    }
-                end
-            end
-        end
+    -- Decrease search radius if very close to ground
+    local searchRadius = self.Range
+    if groundDist < 50 then
+        searchRadius = searchRadius * 0.8
     end
     
-    -- Use map-adjusted parameters for regular points
-    local searchRadius = self.Range * GetConVarNumber("webswing_map_range_mult", 1)
-    local numPoints = self.SearchPoints or 16
-    local bestPoint = nil
-    local bestScore = -1
+    -- Check for obstacle in front (at roughly standing height)
+    local frontTrace = util.TraceHull({
+        start = ply:GetPos() + Vector(0, 0, 40),
+        endpos = ply:GetPos() + Vector(0, 0, 40) + forward * 200,
+        mins = Vector(-16, -16, 0),
+        maxs = Vector(16, 16, 72),
+        filter = ply,
+        mask = MASK_SOLID
+    })
+    local frontalObstacle = frontTrace.Hit
     
-    -- Search in a cone in front of the player
-    for i = 1, numPoints do
-        local angle = math.rad(((i - 1) / numPoints) * 360)
-        local searchDir = forward + 
-                         right * (math.cos(angle) * 0.5) + 
-                         up * (math.sin(angle) * 0.5)
+    -- Now proceed with existing logic of scanning for points:
+    local bestPoint, bestScore = nil, -1
+    for i = 1, (self.SearchPoints or 16) do
+        local angle = math.rad(((i - 1) / (self.SearchPoints or 16)) * 360)
+        local searchDir = forward + right * (math.cos(angle) * 0.5) + up * (math.sin(angle) * 0.5)
         searchDir:Normalize()
         
-        -- Main trace
         local tr = util.TraceLine({
             start = eyePos,
             endpos = eyePos + searchDir * searchRadius,
@@ -1509,9 +1374,13 @@ function SWEP:FindPotentialSwingPoints()
         })
         
         if tr.Hit then
-            -- Check for building corners by doing additional traces
             local isCorner = self:IsCornerPoint(tr.HitPos, tr.HitNormal)
             local score = self:EvaluateSwingPoint(tr.HitPos, eyePos, playerVel, isCorner, speedSqr, false)
+            
+            -- Boost score if there's an obstacle and the point is above that obstacle
+            if frontalObstacle and tr.HitPos.z > (frontTrace.HitPos.z + 50) then
+                score = score + 0.3
+            end
             
             if score > bestScore then
                 bestScore = score
@@ -1527,11 +1396,7 @@ function SWEP:FindPotentialSwingPoints()
         end
     end
     
-    -- Choose between ceiling point and regular point
-    if ceilingPoint and (not bestPoint or ceilingPoint.score > bestPoint.score) then
-        return ceilingPoint
-    end
-    
+    -- Return the best found point
     return bestPoint
 end
 
@@ -1567,7 +1432,6 @@ end
 -- Function to evaluate how good a swing point is
 function SWEP:EvaluateSwingPoint(point, playerPos, playerVel, isCorner, speedSqr, isCeiling)
     local score = 0
-    speedSqr = speedSqr or 0
     
     -- Distance factor (prefer points at medium distance)
     local dist = point:Distance(playerPos)
@@ -1629,6 +1493,23 @@ function SWEP:EvaluateSwingPoint(point, playerPos, playerVel, isCorner, speedSqr
     -- Ceiling bonus
     if isCeiling then
         score = score + 0.3  -- Significant bonus for ceiling points
+    end
+    
+    -- Penalty if player is slow and point is far
+    if speedSqr < (300 * 300) and dist > 800 then
+        score = score - 1
+    end
+    
+    -- Penalty if player is near the ground and target point is not sufficiently high
+    local playerGroundTrace = util.TraceLine({
+        start = playerPos,
+        endpos = playerPos - Vector(0, 0, 9999),
+        filter = self.Owner,
+        mask = MASK_SOLID
+    })
+    local groundHeight = (playerPos.z - playerGroundTrace.HitPos.z)
+    if groundHeight < 60 and (point.z - playerGroundTrace.HitPos.z) < 100 then
+        score = score - 0.5
     end
     
     return score
