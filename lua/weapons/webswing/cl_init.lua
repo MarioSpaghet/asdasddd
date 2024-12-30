@@ -1,3 +1,16 @@
+-- Create client-side ConVars at file scope
+CreateClientConVar("webswing_web_color_r", "255", true, false, "Red component of web color")
+CreateClientConVar("webswing_web_color_g", "255", true, false, "Green component of web color")
+CreateClientConVar("webswing_web_color_b", "255", true, false, "Blue component of web color")
+CreateClientConVar("webswing_rope_material", "cable/xbeam", true, true, "Material used for the web rope")
+CreateClientConVar("webswing_show_ai_indicator", "0", true, false, "Show the AI web point indicator")
+CreateClientConVar("webswing_sound_set", "Tom Holland", true, true, "Sound set for web shooters")
+CreateClientConVar("webswing_web_material", "cable/xbeam", true, true, "Material used for the web")
+
+-- Initialize client-side ConVars
+CreateClientConVar("webswing_manual_mode", "0", true, false, "Use manual web-swing mode (old style)")
+CreateClientConVar("webswing_show_ai_indicator", "0", true, false, "Show AI swing point indicator")
+
 --My (crappy?) way of hiding the view model without stripping weapons
 function SWEP:GetViewModelPosition( pos, ang )
 	if self.RagdollActive then
@@ -6,6 +19,101 @@ function SWEP:GetViewModelPosition( pos, ang )
 	end
 end
 
+-- Add customization menu
+hook.Add("PopulateToolMenu", "WebSwing_Options", function()
+    spawnmenu.AddToolMenuOption("Options", "Spider-Man", "WebSwing_Config", "Web Shooters", "", "", function(panel)
+        panel:ClearControls()
+        
+        -- Add Swing Speed Slider
+        local slider = panel:NumSlider("Swing Speed", "webswing_swing_speed", 400, 1200, 0)
+        slider:SetTooltip("Adjust the swing force when using web swing (Default: 800)")
+        
+        -- Manual Mode Toggle
+        panel:Help("Swing Mode")
+        local manualCheck = panel:CheckBox("Manual Mode (Classic Style)", "webswing_manual_mode")
+        manualCheck:SetTooltip("When enabled, web will attach exactly where you aim. When disabled, it will automatically find the best swing point.")
+        
+        -- Fall Damage Toggle
+        local fallDamageCheck = panel:CheckBox("Enable Fall Damage", "webswing_enable_fall_damage")
+        fallDamageCheck:SetTooltip("When enabled, you will take fall damage while using web swing.")
+        
+        -- AI Indicator Toggle
+        local aiIndicatorCheck = panel:CheckBox("DEBUG:Show AI Swing Point Indicator", "webswing_show_ai_indicator")
+        aiIndicatorCheck:SetTooltip("When enabled, shows where the AI will attach the web in automatic mode.")
+        
+        -- Sound set selection
+        panel:Help("Web Shooter Sound Set")
+        local soundCombo = panel:ComboBox("Sound Set", "webswing_sound_set")
+        soundCombo:SetSortItems(false)
+        soundCombo:AddChoice("Tom Holland", "Tom Holland")
+        soundCombo:AddChoice("Tobey Maguire", "Tobey Maguire")
+        soundCombo:AddChoice("Andrew Garfield", "Andrew Garfield")
+        soundCombo:AddChoice("PS1 Spider-Man", "PS1 Spider-Man")
+        soundCombo:AddChoice("Insomniac Spider-Man", "Insomniac Spider-Man")
+        
+        -- Set current value for sound combo without triggering OnSelect
+        local currentSet = GetConVar("webswing_sound_set"):GetString()
+        for id, data in pairs(soundCombo.Choices) do
+            if data == currentSet then
+                soundCombo:ChooseOptionID(id)
+                break
+            end
+        end
+        
+        -- Handle sound selection change
+        soundCombo.OnSelect = function(self, index, value)
+            net.Start("WebSwing_SetSoundSet")
+                net.WriteString(value)
+            net.SendToServer()
+        end
+        
+        -- Web rope appearance settings
+        panel:Help("Web Rope Appearance")
+        
+        -- Define a table mapping display names to material paths
+        local ropeMaterials = {
+            ["Default"]         = "cable/xbeam",
+            ["Rope"]           = "cable/rope",
+            ["Hydra"]          = "cable/hydra",
+            ["Blue Electric"]  = "cable/blue_elec",
+            ["Red Laser"]      = "cable/redlaser",
+            ["Cable"]          = "cable/cable2",
+            ["Phys Beam"]      = "cable/physbeam",
+        }
+
+        -- Create the ComboBox for selecting rope material
+        local materialCombo = panel:ComboBox("Rope Material", "webswing_rope_material")
+        for displayName, materialPath in pairs(ropeMaterials) do
+            materialCombo:AddChoice(displayName, materialPath)
+        end
+
+        -- Set initial value based on ConVar
+        local currentMaterial = GetConVar("webswing_rope_material"):GetString()
+        for displayName, materialPath in pairs(ropeMaterials) do
+            if materialPath == currentMaterial then
+                materialCombo:SetValue(displayName)
+                break
+            end
+        end
+
+        -- Handle material selection change
+        materialCombo.OnSelect = function(self, index, value)
+            local selectedMaterial = ropeMaterials[value]
+            if selectedMaterial then
+                RunConsoleCommand("webswing_rope_material", selectedMaterial)
+                net.Start("WebSwing_SetRopeMaterial")
+                    net.WriteString(selectedMaterial)
+                net.SendToServer()
+                
+                -- Update any existing ropes
+                local weapon = LocalPlayer():GetWeapon("webswing")
+                if IsValid(weapon) and weapon.ConstraintController and IsValid(weapon.ConstraintController.rope) then
+                    weapon.ConstraintController.rope:SetMaterial(selectedMaterial)
+                end
+            end
+        end
+    end)
+end)
 
 --Construction Kit code
 
@@ -506,68 +614,43 @@ end
 
 --End construction kit
 
---[[ --- Add WebSwing Settings Panel to Utilities Menu --- ]]
--- Create ConVar to store the fall damage setting
-CreateClientConVar("webswing_enable_fall_damage", "0", true, true, "Enable fall damage when using WebSwing", 0, 1)
-
--- Modify the settings panel to use net messages instead of creating a client ConVar
-hook.Add("PopulateToolMenu", "WebSwing_AddSettings", function()
-    spawnmenu.AddToolMenuOption("Utilities", "WebSwing", "WebSwingSettings", "WebSwing Settings", "", "", function(panel)
-        panel:ClearControls()
-        
-        panel:Help("WebSwing Settings")
-        
-        -- Manual Mode Checkbox (Old Style Web-Swing)
-        local manualCheckbox = panel:CheckBox("Manual Web-Swing (Old Style)", "webswing_manual_mode")
-        manualCheckbox:SetTooltip("When enabled, webs will shoot exactly where you're aiming (like the old style). When disabled, the AI will choose optimal swing points.")
-        
-        -- Existing Fall Damage Checkbox
-        local checkbox = panel:CheckBox("Fall Damage", "webswing_enable_fall_damage")
-        checkbox:SetTooltip("When checked, fall damage is enabled while using WebSwing")
-
-        -- Add Swing Speed Slider
-        local slider = panel:NumSlider("Swing Speed", "webswing_swing_speed", 400, 1200, 0)
-        slider:SetTooltip("Adjust the swing force when using web swing (Default: 800)")
-        
-        -- Define a table mapping display names to material paths
-        local ropeMaterials = {
-            ["Default"]         = "cable/xbeam",
-            ["Rope"]           = "cable/rope",
-            ["Hydra"]          = "cable/hydra",
-            ["Blue Electric"]  = "cable/blue_elec",
-            ["Red Laser"]      = "cable/redlaser",
-            ["Cable"]          = "cable/cable2",
-            ["Phys Beam"]      = "cable/physbeam",
-        }
-
-        -- Create the ComboBox for selecting rope material
-        local combo = panel:ComboBox("Rope Material", "webswing_rope_material")
-        for displayName, materialPath in pairs(ropeMaterials) do
-            combo:AddChoice(displayName, materialPath)
-        end
-
-        -- Function to set the ComboBox value based on the current ConVar
-        local function SetComboBoxValue()
-            local currentMaterial = GetConVar("webswing_rope_material"):GetString()
-            for displayName, materialPath in pairs(ropeMaterials) do
-                if materialPath == currentMaterial then
-                    combo:SetValue(displayName)
-                    break
-                end
+-- Add visual indicator for auto-selected swing point
+function SWEP:DrawSwingPointIndicator()
+    -- Ensure ConVars exist
+    if not GetConVar("webswing_manual_mode") or not GetConVar("webswing_show_ai_indicator") then return end
+    
+    if not GetConVar("webswing_manual_mode"):GetBool() and GetConVar("webswing_show_ai_indicator"):GetBool() then
+        local bestPoint = self:FindPotentialSwingPoints()
+        if bestPoint and bestPoint.pos then
+            local pos = bestPoint.pos:ToScreen()
+            
+            -- Draw outer circle
+            surface.SetDrawColor(255, 255, 255, 100)
+            surface.DrawCircle(pos.x, pos.y, 12)
+            
+            -- Draw inner circle with score-based color
+            local score = math.Clamp(bestPoint.score or 0.5, 0, 1)
+            local r = Lerp(score, 255, 50)
+            local g = Lerp(score, 50, 255)
+            surface.SetDrawColor(r, g, 50, 200)
+            surface.DrawCircle(pos.x, pos.y, 8)
+            
+            -- Draw direction indicator if point is a corner
+            if bestPoint.isCorner and bestPoint.normal then
+                surface.SetDrawColor(255, 255, 100, 150)
+                local normal = bestPoint.normal:ToScreen()
+                surface.DrawLine(pos.x, pos.y, 
+                    pos.x + (normal.x - pos.x) * 20,
+                    pos.y + (normal.y - pos.y) * 20)
             end
         end
+    end
+end
 
-        -- Initialize the ComboBox with the current material selection
-        SetComboBoxValue()
-
-        -- Handle the selection and send the corresponding material path to the server
-        combo.OnSelect = function(self, index, value)
-            local selectedMaterial = ropeMaterials[value]
-            if selectedMaterial then
-                net.Start("WebSwing_SetRopeMaterial")
-                    net.WriteString(selectedMaterial)
-                net.SendToServer()
-            end
-        end
-    end)
+-- Hook into the HUD drawing
+hook.Add("HUDPaint", "WebSwing_DrawIndicator", function()
+    local weapon = LocalPlayer():GetActiveWeapon()
+    if IsValid(weapon) and weapon:GetClass() == "webswing" then
+        weapon:DrawSwingPointIndicator()
+    end
 end)
