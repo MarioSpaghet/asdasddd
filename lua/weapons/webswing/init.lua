@@ -8,47 +8,47 @@ util.AddNetworkString("WebSwing_SetSoundSet")
 
 SWEP = SWEP or {}
 
+if SERVER then
+    -- Create a ConVar for maximum web length
+    CreateConVar("webswing_max_length", "1000", FCVAR_ARCHIVE, "Maximum length of web swing")
+
+    util.AddNetworkString("WebSwing_SetSoundSet")
+end
+
 function SWEP:Initialize()
     self.BaseClass.Initialize(self)
 
-    if SERVER then
-        -- Setup network message handler
-        if not self.NetworkSetup then
-            self.NetworkSetup = true
-            net.Receive("WebSwing_SetSoundSet", function(len, ply)
-                if not IsValid(ply) then return end
-                local soundSet = net.ReadString()
-                -- Validate the sound set exists
-                if self.SoundSets[soundSet] then
-                    ply:ConCommand("webswing_sound_set " .. soundSet)
-                end
-            end)
-        end
+    if SERVER and not self.NetworkSetup then
+        self.NetworkSetup = true
+        net.Receive("WebSwing_SetSoundSet", function(len, ply)
+            if not IsValid(ply) then return end
+            local soundSet = net.ReadString()
+            if self.SoundSets and self.SoundSets[soundSet] then
+                ply:ConCommand("webswing_sound_set " .. soundSet)
+            end
+        end)
     end
 end
 
-local MAX_WEB_LENGTH = 1000 -- Define maximum web length
-
 function SWEP:Holster()
-    // Existing holster logic
-    -- Prevent holster from interfering with noclip
-    -- Remove or comment out any lines that disable noclip
-    // return true
+    -- Keep any noclip logic separate or removed if it’s causing issues
     return true
 end
 
 function SWEP:PrimaryAttack()
-    if not IsValid(self.Owner) then return end
+    local owner = self:GetOwner()
+    if not IsValid(owner) then return end
     
-    local trace = self.Owner:GetEyeTrace()
-    -- Check if we hit something solid and it's not the skybox
+    local trace = owner:GetEyeTrace()
     if not trace.Hit or trace.HitSky then return end
     
+    local maxWebLength = GetConVar("webswing_max_length"):GetFloat()
     local targetPos = trace.HitPos
-    local distance = (targetPos - self.Owner:GetPos()):Length()
-    if distance > MAX_WEB_LENGTH then
-        targetPos = self.Owner:GetPos() + (targetPos - self.Owner:GetPos()):GetNormalized() * MAX_WEB_LENGTH
+    local distance = (targetPos - owner:GetPos()):Length()
+    
+    if distance > maxWebLength then
+        targetPos = owner:GetPos() + (targetPos - owner:GetPos()):GetNormalized() * maxWebLength
     end
     
-    // ... existing code ...
+    -- Additional swing logic here...
 end

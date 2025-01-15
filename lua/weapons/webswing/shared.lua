@@ -16,6 +16,14 @@ if SERVER then
 	CreateConVar("webswing_assist_strength", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How strong the swing point selection assist should be (0-2)", 0, 2)
 	CreateConVar("webswing_web_length", "1500", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum allowed web length", 300, 3000)
 	CreateConVar("webswing_swing_curve", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How pronounced the swing arc should be (0-2)", 0, 2)
+	CreateConVar("webswing_keep_webs", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Keep webs for 30 seconds after detaching", 0, 1)
+	CreateConVar("webswing_gravity_reduction", "0.5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much to reduce gravity during swings (0-1)", 0, 1)
+	CreateConVar("webswing_gravity_speed_factor", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much speed affects gravity reduction (0-2)", 0, 2)
+	CreateConVar("webswing_gravity_angle_factor", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much rope angle affects gravity reduction (0-2)", 0, 2)
+	-- Add new ConVars for dynamic rope length
+	CreateConVar("webswing_dynamic_length", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable dynamic rope length adjustment", 0, 1)
+	CreateConVar("webswing_length_angle_factor", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much swing angle affects rope length (0-2)", 0, 2)
+	CreateConVar("webswing_min_length_ratio", "0.5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Minimum rope length as ratio of initial length (0.1-1)", 0.1, 1)
 
 	-- Add network strings
 	util.AddNetworkString("WebSwing_SetRopeMaterial")
@@ -32,6 +40,14 @@ if CLIENT then
 	CreateClientConVar("webswing_assist_strength", "1", true, true, "How strong the swing point selection assist should be (0-2)")
 	CreateClientConVar("webswing_web_length", "1500", true, true, "Maximum allowed web length")
 	CreateClientConVar("webswing_swing_curve", "1.0", true, true, "How pronounced the swing arc should be (0-2)")
+	CreateClientConVar("webswing_keep_webs", "1", true, true, "Keep webs for 30 seconds after detaching")
+	CreateClientConVar("webswing_gravity_reduction", "0.5", true, true, "How much to reduce gravity during swings (0-1)")
+	CreateClientConVar("webswing_gravity_speed_factor", "1.0", true, true, "How much speed affects gravity reduction (0-2)")
+	CreateClientConVar("webswing_gravity_angle_factor", "1.0", true, true, "How much rope angle affects gravity reduction (0-2)")
+	CreateClientConVar("webswing_dynamic_length", "1", true, true, "Enable dynamic rope length adjustment")
+	CreateClientConVar("webswing_length_angle_factor", "1.0", true, true, "How much swing angle affects rope length (0-2)")
+	CreateClientConVar("webswing_length_speed_factor", "1.0", true, true, "How much speed affects rope length (0-2)")
+	CreateClientConVar("webswing_min_length_ratio", "0.5", true, true, "Minimum rope length as ratio of initial length (0.1-1)")
 end
 
 -- Ensure ConVars are accessible
@@ -557,9 +573,20 @@ function SWEP:Initialize()
 		analyzed = false
 	}
 	
-	-- Initialize sound fatigue system variables
-	self.LastWebSoundTime = CurTime()
+	-- Initialize sound variables
+	self.LastWebSoundTime = 0
 	self.WebSoundCount = 0
+	
+	if SERVER and not self.NetworkSetup then
+		self.NetworkSetup = true
+		net.Receive("WebSwing_SetSoundSet", function(len, ply)
+			if not IsValid(ply) then return end
+			local soundSet = net.ReadString()
+			if self.SoundSets and self.SoundSets[soundSet] then
+				ply:ConCommand("webswing_sound_set " .. soundSet)
+			end
+		end)
+	end
 	
 	-- Run map analysis if on server
 	if SERVER then
@@ -676,12 +703,11 @@ end
 
 --   Think does nothing
 function SWEP:Think()
-
     if !self.Owner:IsOnGround() then
-	self.Owner:SetAllowFullRotation(true)
-	elseif self.Owner:IsOnGround() then
-	self.Owner:SetAllowFullRotation(false)
-end
+        self.Owner:SetAllowFullRotation(true)
+    elseif self.Owner:IsOnGround() then
+        self.Owner:SetAllowFullRotation(false)
+    end
 
 -- Remove the existing CalcView hook
 hook.Remove("CalcView", "SpiderManView")
@@ -820,6 +846,52 @@ end)
 	if self.ConstraintController then
 		self.ConstraintController.speed = self:GetShortenSpeed()
 	end
+
+    -- Dynamic rope length adjustment
+    if self.RagdollActive and self.ConstraintController and GetConVar("webswing_dynamic_length"):GetBool() then
+        local ragdoll = self.Ragdoll
+        if IsValid(ragdoll) then
+            -- Get the ragdoll's velocity and position
+            local physObj = ragdoll:GetPhysicsObjectNum(self:GetTargetBone())
+            if IsValid(physObj) then
+                local vel = physObj:GetVelocity()
+                local speed = vel:Length()
+                local pos = physObj:GetPos()
+                
+                -- Calculate swing angle relative to vertical
+                local attachPos = self.ConstraintController.rope:GetPos()
+                local toAttach = (attachPos - pos):GetNormalized()
+                local verticalAngle = math.deg(math.acos(math.abs(toAttach:Dot(Vector(0, 0, 1)))))
+                
+                -- Get adjustment factors from ConVars
+                local angleFactor = GetConVar("webswing_length_angle_factor"):GetFloat()
+                local minLengthRatio = GetConVar("webswing_min_length_ratio"):GetFloat()
+                
+                -- Calculate ideal rope length based on angle and speed
+                local baseLength = self.ConstraintController.initial_length or self.ConstraintController.current_length
+                local minLength = baseLength * minLengthRatio
+                
+                -- Angle-based adjustment (shorter rope at more horizontal angles)
+                local angleAdjust = 1 - (verticalAngle / 90) * 0.5 * angleFactor
+                
+                -- Speed-based adjustment using swing speed
+                local swingSpeed = GetSwingSpeed()
+                local speedRatio = math.min(speed / swingSpeed, 1) -- Normalize speed relative to swing speed
+                local speedAdjust = 1 - speedRatio * 0.3 -- Less aggressive speed adjustment
+                
+                -- Combine adjustments
+                local targetLength = baseLength * math.max(angleAdjust * speedAdjust, minLengthRatio)
+                
+                -- Smoothly interpolate to target length
+                local currentLength = self.ConstraintController.current_length
+                local newLength = Lerp(FrameTime() * 5, currentLength, targetLength)
+                
+                -- Update rope length
+                self.ConstraintController.current_length = newLength
+                self.ConstraintController:Set()
+            end
+        end
+    end
 end
 
 local function CalcElasticConstant( Phys1, Phys2, Ent1, Ent2, iFixed )
@@ -927,19 +999,29 @@ function SWEP:StartWebSwing(tr)
     local maxRange = IsManualMode() and self.BaseRange or self.Range
     if tr.HitPos:Distance(tr.StartPos or ply:EyePos()) >= maxRange then return end
 
-    -- Sound fatigue system
+    -- Sound system
     if SERVER then
-        self.LastWebSoundTime = self.LastWebSoundTime or CurTime()
+        self.LastWebSoundTime = self.LastWebSoundTime or 0
         self.WebSoundCount = self.WebSoundCount or 0
-        local currentTime = CurTime()
-        local timeSinceLastSound = currentTime - self.LastWebSoundTime
-        if timeSinceLastSound > self.WebSoundResetTime then
-            self.WebSoundCount = 0
-        end
-        if timeSinceLastSound > self.WebSoundCooldown then
-            self.WebSoundCount = self.WebSoundCount + 1
-            self.LastWebSoundTime = currentTime
+        
+        -- Always play sound on first shot after initialization
+        if self.LastWebSoundTime == 0 then
             self:PlayWebShootSound()
+            self.LastWebSoundTime = CurTime()
+            self.WebSoundCount = 1
+        else
+            local currentTime = CurTime()
+            local timeSinceLastSound = currentTime - self.LastWebSoundTime
+            
+            if timeSinceLastSound > self.WebSoundResetTime then
+                self.WebSoundCount = 0
+            end
+            
+            if timeSinceLastSound > self.WebSoundCooldown then
+                self.WebSoundCount = self.WebSoundCount + 1
+                self.LastWebSoundTime = currentTime
+                self:PlayWebShootSound()
+            end
         end
     end
 
@@ -1090,6 +1172,7 @@ function SWEP:StartWebSwing(tr)
         if lengthConstraint and ropeEntity then
             self.ConstraintController = {
                 current_length = dist * 0.95,
+                initial_length = dist * 0.95, -- Store initial length for reference
                 constraint = lengthConstraint,
                 rope = ropeEntity,
                 speed = 5,

@@ -26,7 +26,7 @@ hook.Add("PopulateToolMenu", "WebSwing_Options", function()
         
         -- Add Swing Speed Slider
         local slider = panel:NumSlider("Swing Speed", "webswing_swing_speed", 400, 1200, 0)
-        slider:SetTooltip("Adjust the swing force when using web swing (Default: 800)")
+        slider:SetTooltip("Adjust the swing force and rope length behavior (Higher values = more power and tighter rope at speed)")
         
         -- Manual Mode Toggle
         panel:Help("Swing Mode")
@@ -37,9 +37,25 @@ hook.Add("PopulateToolMenu", "WebSwing_Options", function()
         local fallDamageCheck = panel:CheckBox("Enable Fall Damage", "webswing_enable_fall_damage")
         fallDamageCheck:SetTooltip("When enabled, you will take fall damage while using web swing.")
         
+        -- Web Persistence Toggle
+        local webPersistCheck = panel:CheckBox("Keep Webs After Detaching", "webswing_keep_webs")
+        webPersistCheck:SetTooltip("When enabled, webs will stay visible for 30 seconds after detaching.")
+        
         -- AI Indicator Toggle
         local aiIndicatorCheck = panel:CheckBox("DEBUG:Show AI Swing Point Indicator", "webswing_show_ai_indicator")
         aiIndicatorCheck:SetTooltip("When enabled, shows where the AI will attach the web in automatic mode.")
+        
+        -- Dynamic Rope Length Settings
+        panel:Help("Dynamic Rope Length Settings")
+        
+        local dynamicLengthCheck = panel:CheckBox("Enable Dynamic Rope Length", "webswing_dynamic_length")
+        dynamicLengthCheck:SetTooltip("When enabled, rope length will automatically adjust based on swing angle and speed")
+        
+        local angleFactorSlider = panel:NumSlider("Angle Factor", "webswing_length_angle_factor", 0, 2, 2)
+        angleFactorSlider:SetTooltip("How much swing angle affects rope length (0 = no effect, 2 = maximum effect)")
+        
+        local minLengthSlider = panel:NumSlider("Minimum Length Ratio", "webswing_min_length_ratio", 0.1, 1, 2)
+        minLengthSlider:SetTooltip("Minimum rope length as a ratio of initial length (0.1 = very short, 1 = original length)")
         
         -- Sound set selection
         panel:Help("Web Shooter Sound Set")
