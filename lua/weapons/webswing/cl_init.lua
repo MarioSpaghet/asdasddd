@@ -33,6 +33,11 @@ hook.Add("PopulateToolMenu", "WebSwing_Options", function()
         local manualCheck = panel:CheckBox("Manual Mode (Classic Style)", "webswing_manual_mode")
         manualCheck:SetTooltip("When enabled, web will attach exactly where you aim. When disabled, it will automatically find the best swing point.")
         
+        -- Sky Attachment Options
+        panel:Help("Sky Attachment Options")
+        local skyCheck = panel:CheckBox("Attach to an Uncle Ben", "webswing_allow_sky_attach")
+        skyCheck:SetTooltip("When enabled, you can attach webs to an Uncle Ben when no other points are available. Height is automatically adjusted based on speed and environment.")
+        
         -- Fall Damage Toggle
         local fallDamageCheck = panel:CheckBox("Enable Fall Damage", "webswing_enable_fall_damage")
         fallDamageCheck:SetTooltip("When enabled, you will take fall damage while using web swing.")
