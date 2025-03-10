@@ -11,6 +11,9 @@ CreateClientConVar("webswing_web_material", "cable/xbeam", true, true, "Material
 CreateClientConVar("webswing_manual_mode", "0", true, false, "Use manual web-swing mode (old style)")
 CreateClientConVar("webswing_show_ai_indicator", "0", true, false, "Show AI swing point indicator")
 
+-- Include the shared file
+include("shared.lua")
+
 --My (crappy?) way of hiding the view model without stripping weapons
 function SWEP:GetViewModelPosition( pos, ang )
 	if self.RagdollActive then
@@ -150,8 +153,6 @@ for _,t in pairs(SWEP.WElements) do
 	t.angle2 = t.angle
 	t.pos2 = t.pos
 end
-
-include("shared.lua")
 
 SWEP.vRenderOrder = nil
 function SWEP:ViewModelDrawn()

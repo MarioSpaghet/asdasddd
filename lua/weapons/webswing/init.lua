@@ -1,5 +1,12 @@
 AddCSLuaFile("cl_init.lua")
 AddCSLuaFile("shared.lua")
+AddCSLuaFile("camera_system.lua")
+AddCSLuaFile("convars.lua")
+AddCSLuaFile("model_cache.lua")
+AddCSLuaFile("map_analysis.lua")
+AddCSLuaFile("saved_weapons.lua")
+AddCSLuaFile("rope_dynamics.lua")
+AddCSLuaFile("physics_system.lua")
 
 include("shared.lua")
 
@@ -31,7 +38,13 @@ function SWEP:Initialize()
 end
 
 function SWEP:Holster()
-    -- Keep any noclip logic separate or removed if it’s causing issues
+    -- Clean up any server-side resources if needed
+    return true
+end
+
+-- Add Deploy function for server-side handling
+function SWEP:Deploy()
+    -- Server-side deploy logic if needed
     return true
 end
 
