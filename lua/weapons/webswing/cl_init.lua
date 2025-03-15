@@ -7,6 +7,12 @@ CreateClientConVar("webswing_show_ai_indicator", "0", true, false, "Show the AI 
 CreateClientConVar("webswing_sound_set", "Tom Holland", true, true, "Sound set for web shooters")
 CreateClientConVar("webswing_web_material", "cable/xbeam", true, true, "Material used for the web")
 
+-- Camera system ConVars
+CreateClientConVar("webswing_camera_sound_effects", "1", true, false, "Enable camera sound effects during dramatic moments")
+CreateClientConVar("webswing_dynamic_fov", "1", true, false, "Enable speed-based FOV changes")
+CreateClientConVar("webswing_impact_zoom", "1", true, false, "Enable camera zooms during dramatic moments")
+CreateClientConVar("webswing_enhanced_roll", "1", true, false, "Enable enhanced camera roll during turns")
+
 -- Initialize client-side ConVars
 CreateClientConVar("webswing_manual_mode", "0", true, false, "Use manual web-swing mode (old style)")
 CreateClientConVar("webswing_show_ai_indicator", "0", true, false, "Show AI swing point indicator")
@@ -31,31 +37,26 @@ hook.Add("PopulateToolMenu", "WebSwing_Options", function()
         local slider = panel:NumSlider("Swing Speed", "webswing_swing_speed", 400, 1200, 0)
         slider:SetTooltip("Adjust the swing force and rope length behavior (Higher values = more power and tighter rope at speed)")
         
-        -- Manual Mode Toggle
+        -- Manual mode
         panel:Help("Swing Mode")
         local manualCheck = panel:CheckBox("Manual Mode (Classic Style)", "webswing_manual_mode")
         manualCheck:SetTooltip("When enabled, web will attach exactly where you aim. When disabled, it will automatically find the best swing point.")
         
-        -- Sky Attachment Options
-        panel:Help("Sky Attachment Options")
+        -- Allow sky attach
         local skyCheck = panel:CheckBox("Attach to an Uncle Ben", "webswing_allow_sky_attach")
-        skyCheck:SetTooltip("When enabled, you can attach webs to an Uncle Ben when no other points are available. Height is automatically adjusted based on speed and environment.")
         
-        -- Fall Damage Toggle
+        -- Fall damage
         local fallDamageCheck = panel:CheckBox("Enable Fall Damage", "webswing_enable_fall_damage")
         fallDamageCheck:SetTooltip("When enabled, you will take fall damage while using web swing.")
         
-        -- Web Persistence Toggle
+        -- Web persistence
         local webPersistCheck = panel:CheckBox("Keep Webs After Detaching", "webswing_keep_webs")
-        webPersistCheck:SetTooltip("When enabled, webs will stay visible for 30 seconds after detaching.")
         
-        -- AI Indicator Toggle
+        -- DEBUG: Show AI indicator
         local aiIndicatorCheck = panel:CheckBox("DEBUG:Show AI Swing Point Indicator", "webswing_show_ai_indicator")
-        aiIndicatorCheck:SetTooltip("When enabled, shows where the AI will attach the web in automatic mode.")
         
-        -- Dynamic Rope Length Settings
-        panel:Help("Dynamic Rope Length Settings")
-        
+        -- Rope settings
+        panel:Help("Rope Dynamics")
         local dynamicLengthCheck = panel:CheckBox("Enable Dynamic Rope Length", "webswing_dynamic_length")
         dynamicLengthCheck:SetTooltip("When enabled, rope length will automatically adjust based on swing angle and speed")
         
@@ -63,11 +64,30 @@ hook.Add("PopulateToolMenu", "WebSwing_Options", function()
         angleFactorSlider:SetTooltip("How much swing angle affects rope length (0 = no effect, 2 = maximum effect)")
         
         local minLengthSlider = panel:NumSlider("Minimum Length Ratio", "webswing_min_length_ratio", 0.1, 1, 2)
-        minLengthSlider:SetTooltip("Minimum rope length as a ratio of initial length (0.1 = very short, 1 = original length)")
         
-        -- Sound set selection
-        panel:Help("Web Shooter Sound Set")
+        -- Add camera settings section
+        panel:Help("Camera System")
+        
+        -- Dynamic FOV
+        local dynamicFOVCheck = panel:CheckBox("Speed-based FOV Changes", "webswing_dynamic_fov")
+        dynamicFOVCheck:SetTooltip("When enabled, FOV will expand as you gain momentum for a better sense of speed")
+        
+        -- Impact Zoom
+        local impactZoomCheck = panel:CheckBox("Camera Zooms During Dramatic Moments", "webswing_impact_zoom")
+        impactZoomCheck:SetTooltip("Enable subtle camera zooms during sharp turns, dives, and other dramatic moments")
+        
+        -- Enhanced Roll
+        local enhancedRollCheck = panel:CheckBox("Enhanced Camera Roll", "webswing_enhanced_roll")
+        enhancedRollCheck:SetTooltip("Enable more pronounced camera roll during swings and turns")
+        
+        -- Camera Sound Effects
+        local cameraSoundCheck = panel:CheckBox("Camera Sound Effects", "webswing_camera_sound_effects")
+        cameraSoundCheck:SetTooltip("Play subtle sound effects during dramatic camera moments")
+        
+        -- Sound Settings
+        panel:Help("Sound Settings")
         local soundCombo = panel:ComboBox("Sound Set", "webswing_sound_set")
+        soundCombo:SetTooltip("Choose which sound set to use for web shooters")
         soundCombo:SetSortItems(false)
         soundCombo:AddChoice("Tom Holland", "Tom Holland")
         soundCombo:AddChoice("Tobey Maguire", "Tobey Maguire")

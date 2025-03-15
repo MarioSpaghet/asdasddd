@@ -48,6 +48,33 @@ if SERVER then
 	CreateConVar("webswing_ai_curve_strength", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Strength of curved path influence (0-2)", 0, 2)
 	CreateConVar("webswing_ai_flow_threshold", "500", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed threshold for entering flow state (100-1000)", 100, 1000)
 	CreateConVar("webswing_ai_flow_duration", "5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How long flow state lasts in seconds (1-10)", 1, 10)
+	
+	-- Adaptive Tension System ConVars
+	CreateConVar("webswing_adaptive_tension", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable adaptive web tension", 0, 1)
+	CreateConVar("webswing_tension_response", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How quickly web tension responds to inputs (0.1-3.0)", 0.1, 3.0)
+	CreateConVar("webswing_auto_tension", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Automatically adjust tension based on context", 0, 1)
+	CreateConVar("webswing_tension_feedback", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable audio/haptic feedback for tension changes", 0, 1)
+	CreateConVar("webswing_tension_min_mult", "0.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Minimum tension multiplier (tighter web) (0.3-1.0)", 0.3, 1.0)
+	CreateConVar("webswing_tension_max_mult", "1.8", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum tension multiplier (looser web) (1.0-3.0)", 1.0, 3.0)
+	
+	-- Pendulum Physics Enhancement ConVars
+	CreateConVar("webswing_pendulum_arc_emphasis", "1.2", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much to emphasize pendulum arcs (0.5-2.0)", 0.5, 2.0)
+	CreateConVar("webswing_pendulum_frequency", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Natural oscillation frequency (0.7-1.3)", 0.7, 1.3)
+	CreateConVar("webswing_pendulum_apex_slowdown", "0.8", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Slowdown at swing apex (0.5-1.0)", 0.5, 1.0)
+	CreateConVar("webswing_pendulum_gravity_mod", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable gravity modulation for better arcs", 0, 1)
+	CreateConVar("webswing_pendulum_apex_gravity", "0.7", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Gravity factor at the apex of swing (0.4-1.0)", 0.4, 1.0)
+	CreateConVar("webswing_pendulum_down_gravity", "1.2", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Gravity factor on downward swing (1.0-1.5)", 1.0, 1.5)
+	CreateConVar("webswing_pendulum_body_rotation", "1.2", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Body rotation during swings (1.0-2.0)", 1.0, 2.0)
+	CreateConVar("webswing_pendulum_exit_boost", "1.15", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed boost when exiting at optimal angle (1.0-1.5)", 1.0, 1.5)
+	CreateConVar("webswing_pendulum_bobble_reduction", "0.7", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Reduction of side-to-side bobble (0.3-1.0)", 0.3, 1.0)
+	
+	-- Web Release Dynamics ConVars
+	CreateConVar("webswing_release_momentum", "1.25", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Momentum conservation on web release (1.0-1.5)", 1.0, 1.5)
+	CreateConVar("webswing_release_direction", "0.35", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Directional influence on web release (0.0-1.0)", 0.0, 1.0)
+	CreateConVar("webswing_optimal_release", "1.3", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed boost for perfect timing (1.0-1.5)", 1.0, 1.5)
+	CreateConVar("webswing_chain_bonus", "1.15", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Chain bonus for consecutive well-timed releases (1.0-1.3)", 1.0, 1.3)
+	CreateConVar("webswing_midair_correction", "0.3", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Mid-air correction strength after release (0.0-0.5)", 0.0, 0.5)
+	CreateConVar("webswing_slowmo_enabled", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable brief slow motion on perfect releases", 0, 1)
 else
 	-- Client-side ConVars (if required)
 	-- Currently, no client specific convars; add here if needed

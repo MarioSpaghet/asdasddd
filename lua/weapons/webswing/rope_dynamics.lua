@@ -13,6 +13,10 @@ function RopeDynamics.AdjustRopeLength(constraintController, ragdoll, targetBone
     local speed = vel:Length()
     local pos = physObj:GetPos()
     
+    -- Detect falling speed for Web of Shadows style responsiveness
+    local fallingFast = vel.z < -300
+    local verticalSpeed = math.abs(vel.z)
+    
     -- Calculate swing angle relative to vertical
     local attachPos = constraintController.rope:GetPos()
     local toAttach = (attachPos - pos):GetNormalized()
@@ -49,6 +53,16 @@ function RopeDynamics.AdjustRopeLength(constraintController, ragdoll, targetBone
     local angleAdjust = 1 - (predictedAngle / 90) * 0.5 * angleFactor
     local speedRatio = math.min(speed / swingSpeed, 1)
     local speedAdjust = 1 - speedRatio * 0.3
+    
+    -- Enhanced Web of Shadows-style responsiveness: reduce rope length more during fast falls
+    -- and allow faster rope extension when transitioning from falls to swings
+    if fallingFast then
+        local fallFactor = math.Clamp(verticalSpeed / 1000, 0, 1)
+        speedAdjust = speedAdjust * (1 - fallFactor * 0.4) -- Shorter rope during falls
+        
+        -- Increase maximum length change rate during fast falls for more responsive swings
+        maxLengthChange = maxLengthChange * (1 + fallFactor)
+    end
     
     -- Add corner detection adjustment
     local cornerFactor = 1
@@ -99,9 +113,17 @@ function RopeDynamics.AdjustRopeLength(constraintController, ragdoll, targetBone
     local currentLength = constraintController.current_length
     local lengthDiff = targetLength - currentLength
     local maxChangePerFrame = math.min(
-        GetConVar("webswing_max_length_change"):GetFloat() * frameTime,
+        maxLengthChange * frameTime,
         50 -- Absolute maximum per frame
     )
+    
+    -- For fast falls, make rope length changes more responsive
+    if fallingFast then
+        -- Faster rate for starting a swing from a fast fall (Web of Shadows style)
+        local fallSpeedFactor = math.Clamp(verticalSpeed / 800, 1, 2)
+        maxChangePerFrame = maxChangePerFrame * fallSpeedFactor
+    end
+    
     lengthDiff = math.Clamp(lengthDiff, -maxChangePerFrame, maxChangePerFrame)
     
     -- Apply smoothing with momentum preservation
@@ -180,6 +202,7 @@ function RopeDynamics.CreateConstraintController(ragdoll, attachEntity, targetPh
                 rope = ropeEntity,
                 speed = 5,
                 Set = function(ctrl)
+                    if not ctrl then return end
                     if IsValid(ctrl.constraint) then
                         ctrl.constraint:Fire("SetLength", ctrl.current_length, 0)
                     end
@@ -188,10 +211,12 @@ function RopeDynamics.CreateConstraintController(ragdoll, attachEntity, targetPh
                     end
                 end,
                 Shorten = function(ctrl)
+                    if not ctrl then return end
                     ctrl.current_length = math.max(ctrl.current_length - ctrl.speed, 10)
                     ctrl:Set()
                 end,
                 Slacken = function(ctrl)
+                    if not ctrl then return end
                     ctrl.current_length = math.min(ctrl.current_length + ctrl.speed, 2000) -- Use a reasonable max range
                     ctrl:Set()
                 end

@@ -11,6 +11,11 @@ local PhysicsSystem = include("physics_system.lua")
 local RhythmSystem = include("rhythm_system.lua") -- Add the Rhythm System
 local RhythmHUD = include("rhythm_hud.lua") -- Add the Rhythm HUD
 local SwingTargeting = include("swing_targeting.lua") -- Add the AI Swing Targeting System
+local AdaptiveTension = include("adaptive_tension.lua") -- Add the Adaptive Tension System
+local PendulumPhysics = include("pendulum_physics.lua") -- Add the Pendulum Physics Enhancement System
+local WebReleaseDynamics = include("web_release_dynamics.lua") -- Add the Web Release Dynamics System
+local FlowStateSystem = include("flow_state_system.lua") -- Add the Flow State System
+local FlowStateHUD = include("flow_state_hud.lua") -- Add the Flow State HUD
 
 if SERVER then
 	-- Add network strings
@@ -152,6 +157,70 @@ function SWEP:Initialize()
 		end)
 	end
 	
+	-- Initialize the Rhythm System if not already initialized
+	if not self.RhythmSystem then
+		self.RhythmSystem = table.Copy(RhythmSystem)
+		self.RhythmSystem:Initialize()
+	end
+	
+	-- Initialize the Flow State System
+	if not self.FlowStateSystem then
+		self.FlowStateSystem = table.Copy(FlowStateSystem) or {}
+		
+		-- Make sure the FlowStateSystem has all required tables
+		if not self.FlowStateSystem.State then
+		    self.FlowStateSystem.State = {}
+		end
+		
+		if not self.FlowStateSystem.Config then
+		    self.FlowStateSystem.Config = {}
+		end
+		
+		-- Ensure core methods exist to prevent errors
+		self.FlowStateSystem.Initialize = self.FlowStateSystem.Initialize or function() end
+		self.FlowStateSystem.Update = self.FlowStateSystem.Update or function() return {} end
+		self.FlowStateSystem.ResetState = self.FlowStateSystem.ResetState or function() end
+		
+		-- Initialize with safeguards
+		local success, err = pcall(function()
+		    self.FlowStateSystem:Initialize()
+		end)
+		
+		if not success then
+		    ErrorNoHalt("Failed to initialize FlowStateSystem: " .. tostring(err) .. "\n")
+		    
+		    -- Set up minimal functionality to prevent errors
+		    self.FlowStateSystem.GetFlowAdjustments = self.FlowStateSystem.GetFlowAdjustments or function()
+		        return {
+		            speedMultiplier = 1.0,
+		            gravityFactor = 1.0,
+		            airControlFactor = 1.0,
+		            momentumConservation = 1.0,
+		            visualIntensity = 0,
+		            flowLevel = 0,
+		            chainMultiplier = 1.0,
+		            inFlowState = false,
+		            timeDilated = false
+		        }
+		    end
+		end
+	end
+	
+	-- Initialize HUD systems on client
+	if CLIENT then
+		-- Initialize Rhythm HUD if not already initialized
+		if not self.RhythmHUD then
+			self.RhythmHUD = table.Copy(RhythmHUD)
+			self.RhythmHUD:Initialize()
+		end
+		
+		-- Initialize Flow State HUD
+		if not self.FlowStateHUD then
+			self.FlowStateHUD = table.Copy(FlowStateHUD)
+			self.FlowStateHUD:Initialize()
+		end
+	end
+	
 	-- Run analysis on server: map analysis and environmental analysis (wind)
 	if SERVER then
 		self:AnalyzeMap()
@@ -220,6 +289,18 @@ function SWEP:Initialize()
 	self.RhythmSystem = RhythmSystem
 	self.RhythmSystem:Initialize()
 	
+	-- Initialize the adaptive tension system
+	self.AdaptiveTension = AdaptiveTension
+	self.AdaptiveTension:Initialize()
+	
+	-- Initialize the pendulum physics enhancement system
+	self.PendulumPhysics = PendulumPhysics
+	self.PendulumPhysics:Initialize()
+	
+	-- Initialize the web release dynamics system
+	self.WebReleaseDynamics = WebReleaseDynamics
+	self.WebReleaseDynamics:Initialize()
+	
 	-- Initialize the rhythm HUD system
 	if CLIENT then
 		self.RhythmHUD = RhythmHUD
@@ -232,6 +313,17 @@ function SWEP:Initialize()
 				-- Only draw if we're actually web swinging
 				if LocalPlayer():GetActiveWeapon().RagdollActive then
 					self.RhythmHUD:Draw(self.RhythmSystem)
+					
+					-- Draw Flow State HUD if initialized
+					if self.FlowStateHUD then
+						self.FlowStateHUD:Draw(self.FlowStateSystem)
+					end
+				else
+					-- Also draw the Flow State HUD when not swinging, but only if it's active
+					if self.FlowStateHUD and self.FlowStateSystem and 
+					   self.FlowStateSystem.State and self.FlowStateSystem.State.FlowScore > 0 then
+						self.FlowStateHUD:Draw(self.FlowStateSystem)
+					end
 				end
 			end
 		end)
@@ -326,16 +418,106 @@ function SWEP:Think()
 
 	if self.ConstraintController then
 		self.ConstraintController.speed = self:GetShortenSpeed()
+		
+		if self.Owner:KeyDown(IN_FORWARD) then
+			self.ConstraintController:Shorten()
+		elseif self.Owner:KeyDown(IN_BACK) then
+			self.ConstraintController:Slacken()
+		end
+	end
+	
+	-- Update the Flow State system if active
+	if self.FlowStateSystem and self.RhythmSystem then
+		-- Only update during active swinging
+		if self.RagdollActive and IsValid(self.Ragdoll) then
+			local ownerVel = self.Owner:GetVelocity()
+			local frameTime = FrameTime()
+			
+			-- Update flow state and get adjustments
+			if self.FlowStateSystem and self.FlowStateSystem.Update and self.RhythmSystem then
+				local flowAdjustments = self.FlowStateSystem:Update(self.RhythmSystem, ownerVel, frameTime)
+				
+				-- Store flow adjustments for use in physics calculations
+				self.FlowAdjustments = flowAdjustments
+			end
+		elseif not self.RagdollActive then
+			-- Update flow state with zero velocity to allow it to decay when not swinging
+			if self.FlowStateSystem and self.FlowStateSystem.Update and self.RhythmSystem then
+				self.FlowStateSystem:Update(self.RhythmSystem, Vector(0, 0, 0), FrameTime())
+			end
+		end
 	end
 
     -- Dynamic rope length adjustment using the RopeDynamics module
     if self.RagdollActive and self.ConstraintController and GetConVar("webswing_dynamic_length"):GetBool() then
         RopeDynamics.AdjustRopeLength(self.ConstraintController, self.Ragdoll, function() return self:GetTargetBone() end, FrameTime(), self.RhythmSystem)
+        
+        -- Apply adaptive tension system
+        if self.AdaptiveTension then
+            self.AdaptiveTension:Update(self.Owner, self.ConstraintController, self.Owner:GetVelocity(), FrameTime(), self.Ragdoll)
+        end
     end
 
     -- Apply physics forces using the PhysicsSystem module
     if self.RagdollActive and IsValid(self.Ragdoll) then
-        PhysicsSystem.ApplySwingForces(self.Ragdoll, self.Owner, self.ConstraintController, FrameTime(), self.RhythmSystem)
+		-- Apply swing physics via the PhysicsSystem module
+		PhysicsSystem.ApplySwingForces(self.Ragdoll, self.Owner, self.ConstraintController, FrameTime(), self.RhythmSystem)
+		
+		-- Apply pendulum physics enhancements
+		if self.PendulumPhysics then
+			self.PendulumPhysics:Update(self.Ragdoll, self.Owner, FrameTime())
+		end
+		
+		-- Apply flow state physics adjustments if available
+		if self.FlowAdjustments and self.FlowStateSystem and self.FlowStateSystem.State.InFlowState then
+			-- Apply to ragdoll physics
+			for i = 0, self.Ragdoll:GetPhysicsObjectCount() - 1 do
+				local physObj = self.Ragdoll:GetPhysicsObjectNum(i)
+				if IsValid(physObj) then
+					-- Apply flow-based speed boost
+					if self.FlowAdjustments.speedMultiplier > 1.0 then
+						local vel = physObj:GetVelocity()
+						if vel:Length() > 50 then -- Only boost if already moving
+							local speedBoost = (self.FlowAdjustments.speedMultiplier - 1.0) * physObj:GetMass() * vel:GetNormalized() * vel:Length() * 0.5
+							physObj:ApplyForceCenter(speedBoost)
+						end
+					end
+					
+					-- Apply reduced gravity when in high flow levels
+					if self.FlowAdjustments.gravityFactor < 1.0 then
+						local gravityReduction = physObj:GetMass() * 600 * (1.0 - self.FlowAdjustments.gravityFactor) * Vector(0, 0, 1) * FrameTime()
+						physObj:ApplyForceCenter(gravityReduction)
+					end
+				end
+			end
+			
+			-- Apply time dilation if active
+			if self.FlowAdjustments.timeDilated and CLIENT then
+				-- Camera effects and time dilation are handled by the FlowStateSystem itself
+			end
+		end
+    end
+    
+    -- Update web release dynamics system
+    if self.WebReleaseDynamics then
+        self.WebReleaseDynamics:Update(self.Owner, FrameTime())
+    end
+    
+    -- Process rope shortening/slackening
+    if IsValid(self.Owner) and self.Owner:KeyDown(IN_ATTACK2) and self.ConstraintController then
+        if not IsValid(self.ConstraintController.constraint) or not IsValid(self.ConstraintController.rope) then
+            -- Recreate constraint if something went wrong
+            self:CleanupWebSwing()
+            return
+        end
+        
+        self.ConstraintController.speed = self:GetShortenSpeed()
+        
+        if self.Owner:KeyDown(IN_FORWARD) then
+            self.ConstraintController:Shorten()
+        elseif self.Owner:KeyDown(IN_BACK) then
+            self.ConstraintController:Slacken()
+        end
     end
 end
 
@@ -780,6 +962,21 @@ function SWEP:StartWebSwing(tr)
         -- Also record it in the physics system for force calculations
         PhysicsSystem.RecordSwingStart()
     end
+    
+    -- Notify the pendulum physics system of the new swing
+    if self.PendulumPhysics then
+        self.PendulumPhysics:OnSwingStart(self.Ragdoll, self.Owner, self.ConstraintController)
+    end
+    
+    -- Record the swing in the Flow State system
+    if self.FlowStateSystem and self.RhythmSystem then
+        -- Get the current rhythm score to pass to the flow system
+        local rhythmScore = self.RhythmSystem.RhythmScore or 0
+        self.FlowStateSystem:RecordSwing(rhythmScore)
+        
+        -- Reset the swing start time in the rhythm state for phase calculation
+        PhysicsSystem.RhythmState.SwingStartTime = CurTime()
+    end
 end
 
 -- Add this function before StopWebSwing
@@ -828,6 +1025,45 @@ function SWEP:StopWebSwing()
     local rag = self.Ragdoll
     
     self:PlayWebJumpSound()
+    
+    -- Get final velocity before stopping the swing
+    local releaseVelocity = Vector(0, 0, 0)
+    if IsValid(rag) then
+        local physObj = rag:GetPhysicsObjectNum(11) -- Main body bone
+        if IsValid(physObj) then
+            releaseVelocity = physObj:GetVelocity()
+        end
+    end
+    
+    -- Get current swing phase from pendulum physics system
+    local swingPhase = 0.5 -- Default middle phase
+    if self.PendulumPhysics and self.PendulumPhysics.State then
+        swingPhase = self.PendulumPhysics.State.CurrentPhase
+    end
+    
+    -- Apply enhanced release dynamics
+    if self.WebReleaseDynamics then
+        releaseVelocity = self.WebReleaseDynamics:HandleWebRelease(ply, releaseVelocity, swingPhase)
+    end
+    
+    -- Notify the pendulum physics system that the swing is ending
+    if self.PendulumPhysics then
+        self.PendulumPhysics:OnSwingEnd(rag, ply, releaseVelocity)
+    end
+    
+    -- Record the web release in the Flow State system
+    if self.FlowStateSystem and self.RhythmSystem then
+        -- Calculate release accuracy based on rhythm system's optimal release point
+        local releaseAccuracy = 0.5 -- Default moderate accuracy
+        
+        if self.RhythmSystem.OptimalReleasePoint > 0 then
+            -- Calculate how close we are to the optimal release point
+            releaseAccuracy = 1 - math.min(math.abs(swingPhase - self.RhythmSystem.OptimalReleasePoint), 0.5) * 2
+        end
+        
+        -- Record the release in the flow system
+        self.FlowStateSystem:RecordWebRelease(releaseAccuracy)
+    end
     
     self.RagdollActive = false
 
@@ -1167,6 +1403,37 @@ function SWEP:OnRemove()
     if self.CleanupWebSwing then
         self:CleanupWebSwing()
     end
+    
+    if self.ConstraintController then
+        -- Make sure constraint and rope are valid before removing
+        if IsValid(self.ConstraintController.constraint) then
+            self.ConstraintController.constraint:Remove()
+        end
+        if IsValid(self.ConstraintController.rope) then
+            self.ConstraintController.rope:Remove()
+        end
+        -- Clear the controller after removing the constraint
+        self.ConstraintController = nil
+    end
+    
+    -- Clear any remaining rope dynamics state
+    if RopeDynamics then
+        RopeDynamics.PrevVelocity = nil
+        RopeDynamics.LastLengthChange = nil
+        RopeDynamics.LastCornerTime = nil
+    end
+    
+    -- Clear the ragdoll
+    if IsValid(self.Ragdoll) then
+        self.Ragdoll:Remove()
+        self.Ragdoll = nil
+    end
+    
+    self.RagdollActive = false
+    self:ResetAllSettings()
+    
+    -- Make sure we're properly cleaning up hooks
+    hook.Remove("PostSwingPhysics", "PendulumPhysics_PostProcess")
 end
 
 function SWEP:OnDrop()
@@ -1332,6 +1599,22 @@ function SWEP:IsValidSwingPoint(pos, playerPos)
     
     -- If it passed all checks, it's valid
     return true
+end
+
+-- Add this function to calculate optimal sky height
+function SWEP:CalculateOptimalSkyHeight(eyePos, velocity, distToGround)
+    -- Base height is proportional to distance to ground
+    local baseHeight = math.max(distToGround * 1.5, 300)
+    
+    -- Add height based on current speed (faster = higher potential)
+    local speedFactor = math.min(velocity:Length() / 1000, 1)
+    local speedBonus = speedFactor * 400
+    
+    -- Calculate final height
+    local finalHeight = baseHeight + speedBonus
+    
+    -- Cap the height at reasonable limits
+    return math.Clamp(finalHeight, 300, 1500)
 end
 
 -- Now modify GatherSwingPointCandidates to use this function
@@ -2773,3 +3056,95 @@ hook.Add("InitPostEntity", "WebSwing_SetupMomentumTracking", function()
         end
     end
 end)
+
+-- Create a hook for post-swing physics that lets our pendulum system do post-processing
+hook.Add("PostSimulatePhysics", "WebSwing_PostPhysics", function()
+    local ply = LocalPlayer and LocalPlayer() or nil
+    if not IsValid(ply) then return end
+    
+    local weapon = ply:GetActiveWeapon()
+    if IsValid(weapon) and weapon:GetClass() == "webswing" and weapon.RagdollActive then
+        -- Call the post-process hook
+        hook.Run("PostSwingPhysics", weapon.Ragdoll, ply, weapon.ConstraintController)
+    end
+end)
+
+-- Add OnRemove function to clean up hooks and global references
+function SWEP:OnRemove()
+    -- Clean up flow state hook and global reference
+    if CLIENT then
+        hook.Remove("RenderScreenspaceEffects", "FlowState_ScreenEffects")
+        
+        -- Only clear the global if it belongs to this weapon
+        if _G.ActiveFlowSystem == self.FlowStateSystem then
+            _G.ActiveFlowSystem = nil
+        end
+    end
+    
+    -- Call original OnRemove if it exists
+    if self.BaseClass.OnRemove then
+        self.BaseClass.OnRemove(self)
+    end
+    
+    if self.ConstraintController then
+        -- Make sure constraint and rope are valid before removing
+        if IsValid(self.ConstraintController.constraint) then
+            self.ConstraintController.constraint:Remove()
+        end
+        if IsValid(self.ConstraintController.rope) then
+            self.ConstraintController.rope:Remove()
+        end
+        -- Clear the controller after removing the constraint
+        self.ConstraintController = nil
+    end
+    
+    -- Clear any remaining rope dynamics state
+    if RopeDynamics then
+        RopeDynamics.PrevVelocity = nil
+        RopeDynamics.LastLengthChange = nil
+        RopeDynamics.LastCornerTime = nil
+    end
+    
+    -- Clear the ragdoll
+    if IsValid(self.Ragdoll) then
+        self.Ragdoll:Remove()
+        self.Ragdoll = nil
+    end
+    
+    self.RagdollActive = false
+    self:ResetAllSettings()
+    
+    -- Make sure we're properly cleaning up hooks
+    hook.Remove("PostSwingPhysics", "PendulumPhysics_PostProcess")
+end
+
+-- Adding the missing ResetAllSettings function
+function SWEP:ResetAllSettings()
+	-- Reset all web swinging states
+	self.Roping = false
+	self.RagdollActive = false
+	self.WebSoundCount = 0
+	self.TransitioningFromSwing = false
+	self.CameraTransitionStart = 0
+	self.TargetPhysObj = 0
+	self.CameraVars = nil
+	self.ConstraintController = nil
+	self.OriginalStates = nil
+	
+	-- Reset rhythm system if it exists
+	if self.RhythmScore then
+		self.RhythmScore = 0
+		self.IsInRhythm = false
+		self.SwingPhase = 0
+		self.OptimalReleasePoint = 0
+		self.NextPredictedSwingTime = 0
+		self.ConsistencyScore = 0
+		self.LastSwingWasPerfect = false
+		self.LastSwingTime = 0
+	end
+	
+	-- Reset any active effects
+	if hook.GetTable()["PostSwingPhysics"] and hook.GetTable()["PostSwingPhysics"]["PendulumPhysics_PostProcess"] then
+		hook.Remove("PostSwingPhysics", "PendulumPhysics_PostProcess")
+	end
+end

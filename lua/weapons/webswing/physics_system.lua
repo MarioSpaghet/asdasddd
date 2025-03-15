@@ -93,6 +93,16 @@ function PhysicsSystem.ApplySwingForces(ragdoll, owner, constraintController, fr
     local horizontalSpeed = ownerVel:Length2D()
     local massCompFactor = GetConVar("webswing_gravity_reduction"):GetFloat() or 0.5
     local momentumFactor = GetConVar("webswing_momentum_preservation"):GetFloat() or 1
+    
+    -- Detect falling speed and enhance swinging response (Web of Shadows style)
+    local verticalSpeed = math.abs(ownerVel.z)
+    local fallingFast = ownerVel.z < -300 -- Detect falling
+    if fallingFast then
+        -- Increase momentum and gravity compensation during fast falls
+        local fallSpeedFactor = math.Clamp(math.abs(ownerVel.z) / 800, 1, 2.5)
+        massCompFactor = massCompFactor * fallSpeedFactor
+        momentumFactor = momentumFactor * fallSpeedFactor
+    end
 
     -- Update momentum system
     PhysicsSystem:UpdateMomentumSystem(owner, horizontalSpeed, frameTime)
@@ -228,8 +238,14 @@ function PhysicsSystem.ApplySwingForces(ragdoll, owner, constraintController, fr
                     -- Apply enhanced momentum preservation for higher speeds
                     if horizontalSpeed > 600 then
                         -- Make it harder to lose speed at high velocities (WoS-like feel)
-                        local highSpeedPreservation = math.Clamp((horizontalSpeed - 600) / 400, 0, 0.3) 
+                        local highSpeedPreservation = math.Clamp((horizontalSpeed - 600) / 400, 0, 0.3)
                         preservationHorizontalFactor = preservationHorizontalFactor + highSpeedPreservation
+                        
+                        -- Additional boost from vertical speed (Web of Shadows style fall-to-swing transition)
+                        if fallingFast then
+                            local verticalBoost = math.Clamp(verticalSpeed / 1000, 0, 0.5)
+                            preservationHorizontalFactor = preservationHorizontalFactor + verticalBoost
+                        end
                     end
                     
                     horizontalForce = finalDir * predictedHorizontalSpeed * mass * preservationHorizontalFactor * frameTime
