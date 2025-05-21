@@ -8,14 +8,13 @@ local SavedWeapons = include("saved_weapons.lua")
 local CameraSystem = include("camera_system.lua")
 local RopeDynamics = include("rope_dynamics.lua")
 local PhysicsSystem = include("physics_system.lua")
-local RhythmSystem = include("rhythm_system.lua") -- Add the Rhythm System
-local RhythmHUD = include("rhythm_hud.lua") -- Add the Rhythm HUD
 local SwingTargeting = include("swing_targeting.lua") -- Add the AI Swing Targeting System
 local AdaptiveTension = include("adaptive_tension.lua") -- Add the Adaptive Tension System
 local PendulumPhysics = include("pendulum_physics.lua") -- Add the Pendulum Physics Enhancement System
 local WebReleaseDynamics = include("web_release_dynamics.lua") -- Add the Web Release Dynamics System
-local FlowStateSystem = include("flow_state_system.lua") -- Add the Flow State System
-local FlowStateHUD = include("flow_state_hud.lua") -- Add the Flow State HUD
+local WebOfShadowsPhysics = include("web_of_shadows_physics.lua") -- Add the Web of Shadows Physics Enhancement System
+local MomentumConversion = include("momentum_conversion.lua") -- Add the Momentum Conversion System
+local ObstaclePrediction = include("obstacle_prediction.lua") -- Add the Obstacle Prediction System
 
 if SERVER then
 	-- Add network strings
@@ -141,11 +140,11 @@ function SWEP:Initialize()
 		openSpaceRatio = 0.5,  -- Default open space ratio
 		analyzed = false
 	}
-	
+
 	-- Initialize sound variables
 	self.LastWebSoundTime = 0
 	self.WebSoundCount = 0
-	
+
 	if SERVER and not self.NetworkSetup then
 		self.NetworkSetup = true
 		net.Receive("WebSwing_SetSoundSet", function(len, ply)
@@ -156,88 +155,6 @@ function SWEP:Initialize()
 			end
 		end)
 	end
-	
-	-- Initialize the Rhythm System if not already initialized
-	if not self.RhythmSystem then
-		self.RhythmSystem = table.Copy(RhythmSystem)
-		self.RhythmSystem:Initialize()
-	end
-	
-	-- Initialize the Flow State System
-	if not self.FlowStateSystem then
-		self.FlowStateSystem = table.Copy(FlowStateSystem) or {}
-		
-		-- Make sure the FlowStateSystem has all required tables
-		if not self.FlowStateSystem.State then
-		    self.FlowStateSystem.State = {}
-		end
-		
-		if not self.FlowStateSystem.Config then
-		    self.FlowStateSystem.Config = {}
-		end
-		
-		-- Ensure core methods exist to prevent errors
-		self.FlowStateSystem.Initialize = self.FlowStateSystem.Initialize or function() end
-		self.FlowStateSystem.Update = self.FlowStateSystem.Update or function() return {} end
-		self.FlowStateSystem.ResetState = self.FlowStateSystem.ResetState or function() end
-		
-		-- Initialize with safeguards
-		local success, err = pcall(function()
-		    self.FlowStateSystem:Initialize()
-		end)
-		
-		if not success then
-		    ErrorNoHalt("Failed to initialize FlowStateSystem: " .. tostring(err) .. "\n")
-		    
-		    -- Set up minimal functionality to prevent errors
-		    self.FlowStateSystem.GetFlowAdjustments = self.FlowStateSystem.GetFlowAdjustments or function()
-		        return {
-		            speedMultiplier = 1.0,
-		            gravityFactor = 1.0,
-		            airControlFactor = 1.0,
-		            momentumConservation = 1.0,
-		            visualIntensity = 0,
-		            flowLevel = 0,
-		            chainMultiplier = 1.0,
-		            inFlowState = false,
-		            timeDilated = false
-		        }
-		    end
-		end
-	end
-	
-	-- Initialize HUD systems on client
-	if CLIENT then
-		-- Initialize Rhythm HUD if not already initialized
-		if not self.RhythmHUD then
-			self.RhythmHUD = table.Copy(RhythmHUD)
-			self.RhythmHUD:Initialize()
-		end
-		
-		-- Initialize Flow State HUD
-		if not self.FlowStateHUD then
-			self.FlowStateHUD = table.Copy(FlowStateHUD)
-			self.FlowStateHUD:Initialize()
-		end
-	end
-	
-	-- Run analysis on server: map analysis and environmental analysis (wind)
-	if SERVER then
-		self:AnalyzeMap()
-		self:AnalyzeEnvironment()  -- New: check for wind zones
-	end
-	
-	-- Rest of your initialize code...
-	if self.SetWeaponHoldType then 
-		self:SetWeaponHoldType(self.HoldType) 
-	end
-
-	self.Roping = false
-	self.RagdollActive = false
-	self.Ragdoll = nil
-	
-	self.BoneName = ""
-	self.LastTargetNameUpdate = -1
 
 	-- Construction Kit code
 	if CLIENT then
@@ -248,19 +165,19 @@ function SWEP:Initialize()
 
 		self:CreateModels(self.VElements) -- create viewmodels
 		self:CreateModels(self.WElements) -- create worldmodels
-		
+
 		-- init view model bone build function
 		if IsValid(self.Owner) then
 			local vm = self.Owner.GetViewModel and self.Owner:GetViewModel() or NULL
 			if IsValid(vm) then
 				self:ResetBonePositions(vm)
-				
+
 				-- Init viewmodel visibility
 				if (self.ShowViewModel == nil or self.ShowViewModel) then
 					vm:SetColor(Color(255,255,255,255))
 				else
 					vm:SetColor(Color(255,255,255,1))
-					vm:SetMaterial("Debug/hsv")            
+					vm:SetMaterial("Debug/hsv")
 				end
 			end
 		end
@@ -278,56 +195,58 @@ function SWEP:Initialize()
 		maxTilt = 15,
 		smoothSpeed = 10
 	}
-	
+
 	-- Initialize camera transition state
 	self.TransitioningFromSwing = false
 	self.CameraTransitionStart = 0
-	
+
 	-- No need to register camera hooks anymore - using global hook
 
-	-- Initialize the rhythm system
-	self.RhythmSystem = RhythmSystem
-	self.RhythmSystem:Initialize()
-	
 	-- Initialize the adaptive tension system
 	self.AdaptiveTension = AdaptiveTension
 	self.AdaptiveTension:Initialize()
-	
+
 	-- Initialize the pendulum physics enhancement system
 	self.PendulumPhysics = PendulumPhysics
 	self.PendulumPhysics:Initialize()
-	
+
 	-- Initialize the web release dynamics system
 	self.WebReleaseDynamics = WebReleaseDynamics
 	self.WebReleaseDynamics:Initialize()
-	
-	-- Initialize the rhythm HUD system
-	if CLIENT then
-		self.RhythmHUD = RhythmHUD
-		self.RhythmHUD:Initialize()
-		
-		-- Add a HUD paint hook for the rhythm system
-		hook.Add("HUDPaint", "WebSwingRhythmHUD", function()
-			if IsValid(LocalPlayer()) and IsValid(LocalPlayer():GetActiveWeapon()) and 
-			   LocalPlayer():GetActiveWeapon():GetClass() == "webswing" then
-				-- Only draw if we're actually web swinging
-				if LocalPlayer():GetActiveWeapon().RagdollActive then
-					self.RhythmHUD:Draw(self.RhythmSystem)
-					
-					-- Draw Flow State HUD if initialized
-					if self.FlowStateHUD then
-						self.FlowStateHUD:Draw(self.FlowStateSystem)
-					end
-				else
-					-- Also draw the Flow State HUD when not swinging, but only if it's active
-					if self.FlowStateHUD and self.FlowStateSystem and 
-					   self.FlowStateSystem.State and self.FlowStateSystem.State.FlowScore > 0 then
-						self.FlowStateHUD:Draw(self.FlowStateSystem)
-					end
-				end
-			end
-		end)
+
+	-- Initialize the Web of Shadows physics system
+	self.WebOfShadowsPhysics = WebOfShadowsPhysics
+	self.WebOfShadowsPhysics:Initialize()
+
+	-- Initialize the Web of Shadows targeting system
+	if SwingTargeting then
+		SwingTargeting:InitializeWoSTargeting()
 	end
+
+	-- Initialize the Momentum Conversion system
+	self.MomentumConversion = MomentumConversion
+	self.MomentumConversion:Initialize()
+
+	-- Initialize the Obstacle Prediction system
+	self.ObstaclePrediction = ObstaclePrediction
+
+	-- Run analysis on server: map analysis and environmental analysis (wind)
+	if SERVER then
+		self:AnalyzeMap()
+		self:AnalyzeEnvironment()  -- New: check for wind zones
+	end
+
+	-- Rest of your initialize code...
+	if self.SetWeaponHoldType then
+		self:SetWeaponHoldType(self.HoldType)
+	end
+
+	self.Roping = false
+	self.RagdollActive = false
+	self.Ragdoll = nil
+
+	self.BoneName = ""
+	self.LastTargetNameUpdate = -1
 end
 
 --	Reload changes our bone number
@@ -383,8 +302,6 @@ end
 function SWEP:OnRemove(webswing)
 	-- Properly remove the camera hook using the correct hook name
 	hook.Remove("CalcView", "SpiderManView")
-	-- Remove rhythm HUD hook
-	hook.Remove("HUDPaint", "WebSwingRhythmHUD")
 	-- Clean up camera variables
 	self.CameraVars = nil
 	self.TransitioningFromSwing = false
@@ -392,12 +309,17 @@ function SWEP:OnRemove(webswing)
     return true
 end
 
---   Think does nothing
+--   Think function
 function SWEP:Think()
     if !self.Owner:IsOnGround() then
         self.Owner:SetAllowFullRotation(true)
     elseif self.Owner:IsOnGround() then
         self.Owner:SetAllowFullRotation(false)
+    end
+    
+    -- Update Web of Shadows targeting system
+    if SwingTargeting then
+        SwingTargeting:UpdateWoSTargeting(self.Owner, FrameTime())
     end
 
 -- Camera system is now imported from camera_system.lua
@@ -418,40 +340,18 @@ function SWEP:Think()
 
 	if self.ConstraintController then
 		self.ConstraintController.speed = self:GetShortenSpeed()
-		
+
 		if self.Owner:KeyDown(IN_FORWARD) then
 			self.ConstraintController:Shorten()
 		elseif self.Owner:KeyDown(IN_BACK) then
 			self.ConstraintController:Slacken()
 		end
 	end
-	
-	-- Update the Flow State system if active
-	if self.FlowStateSystem and self.RhythmSystem then
-		-- Only update during active swinging
-		if self.RagdollActive and IsValid(self.Ragdoll) then
-			local ownerVel = self.Owner:GetVelocity()
-			local frameTime = FrameTime()
-			
-			-- Update flow state and get adjustments
-			if self.FlowStateSystem and self.FlowStateSystem.Update and self.RhythmSystem then
-				local flowAdjustments = self.FlowStateSystem:Update(self.RhythmSystem, ownerVel, frameTime)
-				
-				-- Store flow adjustments for use in physics calculations
-				self.FlowAdjustments = flowAdjustments
-			end
-		elseif not self.RagdollActive then
-			-- Update flow state with zero velocity to allow it to decay when not swinging
-			if self.FlowStateSystem and self.FlowStateSystem.Update and self.RhythmSystem then
-				self.FlowStateSystem:Update(self.RhythmSystem, Vector(0, 0, 0), FrameTime())
-			end
-		end
-	end
 
     -- Dynamic rope length adjustment using the RopeDynamics module
     if self.RagdollActive and self.ConstraintController and GetConVar("webswing_dynamic_length"):GetBool() then
-        RopeDynamics.AdjustRopeLength(self.ConstraintController, self.Ragdoll, function() return self:GetTargetBone() end, FrameTime(), self.RhythmSystem)
-        
+        RopeDynamics.AdjustRopeLength(self.ConstraintController, self.Ragdoll, function() return self:GetTargetBone() end, FrameTime())
+
         -- Apply adaptive tension system
         if self.AdaptiveTension then
             self.AdaptiveTension:Update(self.Owner, self.ConstraintController, self.Owner:GetVelocity(), FrameTime(), self.Ragdoll)
@@ -460,49 +360,36 @@ function SWEP:Think()
 
     -- Apply physics forces using the PhysicsSystem module
     if self.RagdollActive and IsValid(self.Ragdoll) then
-		-- Apply swing physics via the PhysicsSystem module
-		PhysicsSystem.ApplySwingForces(self.Ragdoll, self.Owner, self.ConstraintController, FrameTime(), self.RhythmSystem)
-		
-		-- Apply pendulum physics enhancements
-		if self.PendulumPhysics then
-			self.PendulumPhysics:Update(self.Ragdoll, self.Owner, FrameTime())
-		end
-		
-		-- Apply flow state physics adjustments if available
-		if self.FlowAdjustments and self.FlowStateSystem and self.FlowStateSystem.State.InFlowState then
-			-- Apply to ragdoll physics
-			for i = 0, self.Ragdoll:GetPhysicsObjectCount() - 1 do
-				local physObj = self.Ragdoll:GetPhysicsObjectNum(i)
-				if IsValid(physObj) then
-					-- Apply flow-based speed boost
-					if self.FlowAdjustments.speedMultiplier > 1.0 then
-						local vel = physObj:GetVelocity()
-						if vel:Length() > 50 then -- Only boost if already moving
-							local speedBoost = (self.FlowAdjustments.speedMultiplier - 1.0) * physObj:GetMass() * vel:GetNormalized() * vel:Length() * 0.5
-							physObj:ApplyForceCenter(speedBoost)
-						end
-					end
-					
-					-- Apply reduced gravity when in high flow levels
-					if self.FlowAdjustments.gravityFactor < 1.0 then
-						local gravityReduction = physObj:GetMass() * 600 * (1.0 - self.FlowAdjustments.gravityFactor) * Vector(0, 0, 1) * FrameTime()
-						physObj:ApplyForceCenter(gravityReduction)
-					end
-				end
-			end
-			
-			-- Apply time dilation if active
-			if self.FlowAdjustments.timeDilated and CLIENT then
-				-- Camera effects and time dilation are handled by the FlowStateSystem itself
-			end
-		end
+        -- Check if Web of Shadows physics is enabled
+        if GetConVar("webswing_use_wos_physics"):GetBool() then
+            -- Apply Web of Shadows physics enhancements
+            if self.WebOfShadowsPhysics then
+                self.WebOfShadowsPhysics:EnhancePhysics(self.Ragdoll, self.Owner, self.ConstraintController, FrameTime())
+            end
+        else
+            -- Apply standard swing physics via the PhysicsSystem module
+            PhysicsSystem.ApplySwingForces(self.Ragdoll, self.Owner, self.ConstraintController, FrameTime())
+
+            -- Apply pendulum physics enhancements
+            if self.PendulumPhysics then
+                self.PendulumPhysics:EnhancePhysics(self.Ragdoll, self.Owner, self.ConstraintController, FrameTime())
+            end
+        end
     end
-    
+
     -- Update web release dynamics system
     if self.WebReleaseDynamics then
         self.WebReleaseDynamics:Update(self.Owner, FrameTime())
     end
-    
+
+    -- Update momentum conversion system (when not swinging)
+    if not self.RagdollActive and self.MomentumConversion and IsValid(self.Owner) then
+        -- Process the player for momentum conversion
+        if SERVER then
+            self.MomentumConversion:ProcessPlayer(self.Owner)
+        end
+    end
+
     -- Process rope shortening/slackening
     if IsValid(self.Owner) and self.Owner:KeyDown(IN_ATTACK2) and self.ConstraintController then
         if not IsValid(self.ConstraintController.constraint) or not IsValid(self.ConstraintController.rope) then
@@ -510,9 +397,9 @@ function SWEP:Think()
             self:CleanupWebSwing()
             return
         end
-        
+
         self.ConstraintController.speed = self:GetShortenSpeed()
-        
+
         if self.Owner:KeyDown(IN_FORWARD) then
             self.ConstraintController:Shorten()
         elseif self.Owner:KeyDown(IN_BACK) then
@@ -539,15 +426,15 @@ end
 
 function SWEP:SecondaryAttack()
     if not IsFirstTimePredicted() then return end
-    
+
     -- Prevent spamming
     if (self.NextSwingTime or 0) > CurTime() then
         return
     end
-    
+
     if self.Owner:KeyPressed(IN_ATTACK2) then
         self.NextSwingTime = CurTime() + 0.5  -- Adjust cooldown as needed
-        
+
         local tr
         if GetConVar("webswing_manual_mode"):GetBool() then
             -- Use exact trace for manual mode
@@ -559,7 +446,7 @@ function SWEP:SecondaryAttack()
                 collisiongroup = COLLISION_GROUP_NONE,
                 ignoreworld = false
             })
-            
+
             if not tr.Hit then return end
         else
             local bestPoint = self:FindPotentialSwingPoints()
@@ -573,7 +460,7 @@ function SWEP:SecondaryAttack()
                 PhysicsBone = 0
             }
         end
-        
+
         if SERVER then
             self.Owner.OriginalNoclipSpeed = self.Owner:GetNWFloat("sv_noclipspeed", 5)
             self.Owner:SetNWFloat("sv_noclipspeed", 0)
@@ -581,16 +468,16 @@ function SWEP:SecondaryAttack()
             net.WriteBool(true)
             net.Send(self.Owner)
         end
-        
+
         hook.Add("Move", "WebSwing_NoclipSpeed_" .. self.Owner:EntIndex(), function(moveply, mv)
             if moveply == self.Owner then
                 mv:SetVelocity(Vector(0, 0, 0))
                 return true
             end
         end)
-        
+
         self:StartWebSwing(tr)
-        
+
     elseif self.Owner:KeyReleased(IN_ATTACK2) then
         self:StopWebSwing()
     end
@@ -599,7 +486,7 @@ end
 function SWEP:StartWebSwing(tr)
     if self.RagdollActive then return end
     if not IsValid(self.Owner) then return end
-    
+
     local ply = self.Owner
     if not tr or not tr.Hit then return end
     tr.Entity = tr.Entity or game.GetWorld()
@@ -628,7 +515,7 @@ function SWEP:StartWebSwing(tr)
     if SERVER then
         self.LastWebSoundTime = self.LastWebSoundTime or 0
         self.WebSoundCount = self.WebSoundCount or 0
-        
+
         -- Always play sound on first shot after initialization
         if self.LastWebSoundTime == 0 then
             self:PlayWebShootSound()
@@ -637,11 +524,11 @@ function SWEP:StartWebSwing(tr)
         else
             local currentTime = CurTime()
             local timeSinceLastSound = currentTime - self.LastWebSoundTime
-            
+
             if timeSinceLastSound > self.WebSoundResetTime then
                 self.WebSoundCount = 0
             end
-            
+
             if timeSinceLastSound > self.WebSoundCooldown then
                 self.WebSoundCount = self.WebSoundCount + 1
                 self.LastWebSoundTime = currentTime
@@ -662,11 +549,11 @@ function SWEP:StartWebSwing(tr)
             noDraw = ply:GetNoDraw(),
             noclipSpeed = ply:GetNWFloat("sv_noclipspeed", 5)
         }
-        
+
         -- Apply swing state more gracefully
         ply:SetMoveType(MOVETYPE_NOCLIP)
         ply:SetNWFloat("sv_noclipspeed", 0)
-        
+
         -- Don't completely zero velocity, just dampen it
         local currentVel = ply:GetVelocity()
         ply:SetVelocity(currentVel * 0.5)
@@ -691,27 +578,27 @@ function SWEP:StartWebSwing(tr)
 
     -- Get player data safely
     local data = self:SafelyCopyPlayerData(ply)
-    if not data then 
+    if not data then
         ErrorNoHalt("WebSwing: Failed to copy player data for ragdoll creation\n")
         return
     end
 
     local ragdoll = ents.Create("prop_ragdoll")
-    if not IsValid(ragdoll) then 
+    if not IsValid(ragdoll) then
         ErrorNoHalt("WebSwing: Failed to create ragdoll entity\n")
-        return 
+        return
     end
-    
+
     -- Apply data safely
     if not self:SafelyApplyEntityData(ragdoll, data) then
         ErrorNoHalt("WebSwing: Failed to apply entity data to ragdoll\n")
         ragdoll:Remove()
         return
     end
-    
+
     ragdoll:Spawn()
     ragdoll:Activate()
-    
+
     -- Standardize mass for each physics object
     for i = 0, ragdoll:GetPhysicsObjectCount() - 1 do
         local physObj = ragdoll:GetPhysicsObjectNum(i)
@@ -843,9 +730,8 @@ function SWEP:StartWebSwing(tr)
         end
 
         -- Use the RopeDynamics module to create the constraint controller
-        local RopeDynamics = include("rope_dynamics.lua")
         self.ConstraintController = RopeDynamics.CreateConstraintController(
-            ragdoll, attachEntity, targetPhysObj, attachBone, tr.HitPos, 
+            ragdoll, attachEntity, targetPhysObj, attachBone, tr.HitPos,
             dist, useRope, ropeMat, ropeWidth, ropeColor
         )
         if self.ConstraintController then
@@ -904,7 +790,7 @@ function SWEP:StartWebSwing(tr)
                         -- Compute the stretch ratio (current / rest length)
                         local ratio = ctrl.current_length / ctrl.initial_length
                         ratio = math.Clamp(ratio, 0.5, 1.2)
-                        
+
                         -- Dynamic recalculation of stiffness and damping based on the ratio.
                         -- You can also incorporate swing angle here if desired.
                         local stiffnessFactor = Lerp((ratio - 0.5) / (1.2 - 0.5), 1.5, 0.8)
@@ -946,36 +832,9 @@ function SWEP:StartWebSwing(tr)
         end
     end
 
-    -- Record the start of a new swing for rhythm tracking
-    if self.RhythmSystem then
-        local swingType = "standard"
-        -- Determine swing type based on conditions
-        if self.Owner:GetVelocity():Length() > 800 then
-            swingType = "momentum"
-        elseif self.Owner:GetVelocity().z < -300 then
-            swingType = "falling"
-        end
-        
-        -- Record the new swing event
-        self.RhythmSystem:RecordSwing(swingType)
-        
-        -- Also record it in the physics system for force calculations
-        PhysicsSystem.RecordSwingStart()
-    end
-    
     -- Notify the pendulum physics system of the new swing
     if self.PendulumPhysics then
         self.PendulumPhysics:OnSwingStart(self.Ragdoll, self.Owner, self.ConstraintController)
-    end
-    
-    -- Record the swing in the Flow State system
-    if self.FlowStateSystem and self.RhythmSystem then
-        -- Get the current rhythm score to pass to the flow system
-        local rhythmScore = self.RhythmSystem.RhythmScore or 0
-        self.FlowStateSystem:RecordSwing(rhythmScore)
-        
-        -- Reset the swing start time in the rhythm state for phase calculation
-        PhysicsSystem.RhythmState.SwingStartTime = CurTime()
     end
 end
 
@@ -984,24 +843,24 @@ function SWEP:IsInCorner(pos, ignoreEnts)
     local angles = {0, 45, 90, 135, 180, 225, 270, 315}
     local hitCount = 0
     local hitNormals = {}
-    
+
     for _, angle in ipairs(angles) do
         local rad = math.rad(angle)
         local dir = Vector(math.cos(rad), math.sin(rad), 0)
-        
+
         local tr = util.TraceLine({
             start = pos,
             endpos = pos + dir * 40,
             filter = ignoreEnts or {self.Owner},
             mask = MASK_SOLID
         })
-        
+
         if tr.Hit then
             hitCount = hitCount + 1
             table.insert(hitNormals, tr.HitNormal)
         end
     end
-    
+
     -- If we hit multiple walls, check if they form a corner
     if hitCount >= 2 then
         -- Calculate the average escape direction from all hit normals
@@ -1010,22 +869,22 @@ function SWEP:IsInCorner(pos, ignoreEnts)
             escapeDir = escapeDir + normal
         end
         escapeDir:Normalize()
-        
+
         return true, escapeDir
     end
-    
+
     return false, Vector(0, 0, 0)
 end
 
 function SWEP:StopWebSwing()
     if not self.RagdollActive then return end
-    
+
     if not self.Owner then return end
     local ply = self.Owner
     local rag = self.Ragdoll
-    
+
     self:PlayWebJumpSound()
-    
+
     -- Get final velocity before stopping the swing
     local releaseVelocity = Vector(0, 0, 0)
     if IsValid(rag) then
@@ -1034,37 +893,31 @@ function SWEP:StopWebSwing()
             releaseVelocity = physObj:GetVelocity()
         end
     end
-    
+
     -- Get current swing phase from pendulum physics system
     local swingPhase = 0.5 -- Default middle phase
     if self.PendulumPhysics and self.PendulumPhysics.State then
         swingPhase = self.PendulumPhysics.State.CurrentPhase
     end
-    
+
     -- Apply enhanced release dynamics
-    if self.WebReleaseDynamics then
-        releaseVelocity = self.WebReleaseDynamics:HandleWebRelease(ply, releaseVelocity, swingPhase)
+    if GetConVar("webswing_use_wos_physics"):GetBool() then
+        -- Use Web of Shadows style release dynamics
+        if self.WebOfShadowsPhysics then
+            releaseVelocity = self.WebOfShadowsPhysics:EnhanceWebRelease(ply, releaseVelocity, swingPhase)
+        end
+    else
+        -- Use standard web release dynamics
+        if self.WebReleaseDynamics then
+            releaseVelocity = self.WebReleaseDynamics:HandleWebRelease(ply, releaseVelocity, swingPhase)
+        end
     end
-    
+
     -- Notify the pendulum physics system that the swing is ending
     if self.PendulumPhysics then
         self.PendulumPhysics:OnSwingEnd(rag, ply, releaseVelocity)
     end
-    
-    -- Record the web release in the Flow State system
-    if self.FlowStateSystem and self.RhythmSystem then
-        -- Calculate release accuracy based on rhythm system's optimal release point
-        local releaseAccuracy = 0.5 -- Default moderate accuracy
-        
-        if self.RhythmSystem.OptimalReleasePoint > 0 then
-            -- Calculate how close we are to the optimal release point
-            releaseAccuracy = 1 - math.min(math.abs(swingPhase - self.RhythmSystem.OptimalReleasePoint), 0.5) * 2
-        end
-        
-        -- Record the release in the flow system
-        self.FlowStateSystem:RecordWebRelease(releaseAccuracy)
-    end
-    
+
     self.RagdollActive = false
 
     if SERVER then
@@ -1078,7 +931,7 @@ function SWEP:StopWebSwing()
             ply:SetRenderMode(self.OriginalStates.renderMode)
             ply:SetNoDraw(self.OriginalStates.noDraw)
             ply:SetNWFloat("sv_noclipspeed", self.OriginalStates.noclipSpeed)
-            
+
             -- Clear stored states
             self.OriginalStates = nil
         else
@@ -1088,7 +941,7 @@ function SWEP:StopWebSwing()
             ply:SetRenderMode(RENDERMODE_NORMAL)
             ply:SetNoDraw(false)
         end
-        
+
         -- Restore visibility of attached entities
         for _, ent in pairs(ents.FindByClass("prop_physics")) do
             if ent:GetParent() == ply then
@@ -1100,24 +953,24 @@ function SWEP:StopWebSwing()
     if CLIENT then return end
 
     self:SetNetworkedBool("wt_ragdollactive", false)
-    
+
     ply.WT_webswing_Roping = false
     ply:SetParent(nil)
-    
+
     -- Remove move hook without affecting other hooks
     hook.Remove("Move", "WebSwing_NoclipSpeed_" .. ply:EntIndex())
 
     local ragValid = IsValid(rag)
     local vel = Vector(0, 0, 0)
-    
+
     if ragValid then
         vel = rag:GetVelocity()
-        
+
         -- Make the ragdoll invisible and non-colliding
         rag:SetRenderMode(RENDERMODE_TRANSALPHA)
         rag:SetColor(Color(255, 255, 255, 0))
         rag:SetCollisionGroup(COLLISION_GROUP_WORLD)
-        
+
         -- Get all physics objects and disable collisions
         for i = 0, rag:GetPhysicsObjectCount() - 1 do
             local phys = rag:GetPhysicsObjectNum(i)
@@ -1125,7 +978,7 @@ function SWEP:StopWebSwing()
                 phys:EnableCollisions(false)
             end
         end
-        
+
         -- Handle web removal based on ConVar
         if GetConVar("webswing_keep_webs"):GetBool() then
             -- Remove the ragdoll after a delay
@@ -1141,7 +994,7 @@ function SWEP:StopWebSwing()
     else
         SafeRemoveEntity(rag)
     end
-    
+
     local respawnPos = ragValid and rag:GetPos() or ply:GetPos()
     local safePos = self:FindSafePosition(respawnPos)
 
@@ -1152,7 +1005,7 @@ function SWEP:StopWebSwing()
             -- Check for corners at the test position
             local inCorner = self:IsInCorner(testPos, {ply})
             if inCorner then return false end
-            
+
             -- Check if position is safe for player
             local tr = util.TraceHull({
                 start = testPos,
@@ -1162,10 +1015,10 @@ function SWEP:StopWebSwing()
                 filter = ply,
                 mask = MASK_SOLID
             })
-            
+
             return not tr.Hit
         end
-        
+
         -- Try positions in a spiral pattern, moving outward and upward
         local attempts = {}
         for i = 0, 360, 45 do
@@ -1181,7 +1034,7 @@ function SWEP:StopWebSwing()
                 end
             end
         end
-        
+
         -- Try each position
         for _, offset in ipairs(attempts) do
             local testPos = pos + offset
@@ -1189,7 +1042,7 @@ function SWEP:StopWebSwing()
                 return testPos
             end
         end
-        
+
         -- If no safe position found, move up and away from walls
         local tr = util.TraceHull({
             start = pos,
@@ -1199,24 +1052,24 @@ function SWEP:StopWebSwing()
             filter = ply,
             mask = MASK_SOLID
         })
-        
+
         if tr.Hit then
             return pos + tr.HitNormal * 64 + Vector(0, 0, 64)
         end
-        
+
         return pos
     end
-    
+
     -- Find a safe position and set the player's position
     local safePos = FindSafePosition(respawnPos)
-    
+
     -- Enhanced safe position finding with corner avoidance
     local function FindSafePosition(pos)
         local function TestPosition(testPos)
             -- Check for corners at the test position
             local inCorner = self:IsInCorner(testPos, {ply})
             if inCorner then return false end
-            
+
             -- Check if position is safe for player
             local tr = util.TraceHull({
                 start = testPos,
@@ -1226,10 +1079,10 @@ function SWEP:StopWebSwing()
                 filter = ply,
                 mask = MASK_SOLID
             })
-            
+
             return not tr.Hit
         end
-        
+
         -- Try positions in a spiral pattern, moving outward and upward
         local attempts = {}
         for i = 0, 360, 45 do
@@ -1245,7 +1098,7 @@ function SWEP:StopWebSwing()
                 end
             end
         end
-        
+
         -- Try each position
         for _, offset in ipairs(attempts) do
             local testPos = pos + offset
@@ -1253,7 +1106,7 @@ function SWEP:StopWebSwing()
                 return testPos
             end
         end
-        
+
         -- If no safe position found, move up and away from walls
         local tr = util.TraceHull({
             start = pos,
@@ -1263,43 +1116,31 @@ function SWEP:StopWebSwing()
             filter = ply,
             mask = MASK_SOLID
         })
-        
+
         if tr.Hit then
             return pos + tr.HitNormal * 64 + Vector(0, 0, 64)
         end
-        
+
         return pos
     end
-    
+
     -- Find a safe position and set the player's position
     local safePos = FindSafePosition(respawnPos)
     if safePos then
         ply:SetPos(safePos)
-        
+
         -- Transfer momentum more naturally
         if vel:Length() > 0 then
             -- Preserve horizontal velocity with better control
             local horizontalVel = Vector(vel.x, vel.y, 0)
             local verticalVel = Vector(0, 0, math.max(vel.z * 0.8, 0)) -- Prevent strong downward momentum
-            
+
             -- Apply velocity with a slight damping for better control
             ply:SetVelocity(horizontalVel * 0.9 + verticalVel)
         end
     end
 
-    if self.RagdollActive and self.RhythmSystem then
-        -- Record the swing release and get release accuracy
-        local swingDuration = CurTime() - self.RhythmSystem.LastSwingTime
-        local releaseAccuracy = self.RhythmSystem:RecordRelease(swingDuration)
-        
-        -- Apply a momentum boost based on release timing accuracy
-        if releaseAccuracy > 0.7 and GetConVar("webswing_rhythm_boost"):GetBool() then
-            local boostStrength = releaseAccuracy * 0.3
-            local currentVel = self.Owner:GetVelocity()
-            local boostVel = currentVel:GetNormalized() * currentVel:Length() * boostStrength
-            self.Owner:SetVelocity(boostVel)
-        end
-    end
+    -- No rhythm system implemented
 end
 
 function SWEP:Shorten()
@@ -1326,14 +1167,14 @@ function SWEP:Holster()
     if IsValid(self.Owner) and self.Owner:Alive() and self.RagdollActive then
         return false
     end
-    
+
     -- Ensure player is visible when holstering
     if SERVER and IsValid(self.Owner) then
         self.Owner:SetNoDraw(false)
         self.Owner:DrawWorldModel(true)
         self.Owner:SetRenderMode(RENDERMODE_NORMAL)
         self.Owner:SetColor(Color(255, 255, 255, 255))
-        
+
         -- Restore visibility of attached entities
         for _, ent in pairs(ents.FindByClass("prop_physics")) do
             if ent:GetParent() == self.Owner then
@@ -1341,17 +1182,17 @@ function SWEP:Holster()
             end
         end
     end
-    
+
     if CLIENT and IsValid(self.Owner) then
         self.Owner:DrawViewModel(true)
         local vm = self.Owner:GetViewModel()
         if IsValid(vm) then
             self:ResetBonePositions(vm)
         end
-        
+
         -- No need to remove camera hooks - using global hook
     end
-    
+
     return true
 end
 
@@ -1363,7 +1204,7 @@ end
 
 function SWEP:OnRemove()
     -- No need to clean up camera hooks - using global hook
-    
+
     -- Server-side cleanup
     if SERVER and IsValid(self.Owner) then
         -- Clean up movement hooks and restore noclip speed
@@ -1372,20 +1213,20 @@ function SWEP:OnRemove()
             self.Owner:SetNWFloat("sv_noclipspeed", self.Owner.OriginalNoclipSpeed)
             self.Owner.OriginalNoclipSpeed = nil
         end
-        
+
         -- Make sure player is visible and properly configured
         self.Owner:SetNoDraw(false)
         self.Owner:DrawWorldModel(true)
         self.Owner:SetRenderMode(RENDERMODE_NORMAL)
         self.Owner:SetColor(Color(255, 255, 255, 255))
         self.Owner:SetMoveType(MOVETYPE_WALK)
-        
+
         -- Clean up any active ragdoll
         if IsValid(self.Ragdoll) then
             SafeRemoveEntity(self.Ragdoll)
         end
     end
-    
+
     -- Client-side cleanup
     if CLIENT and IsValid(self.Owner) then
         self.Owner:DrawViewModel(true)
@@ -1394,16 +1235,16 @@ function SWEP:OnRemove()
             self:ResetBonePositions(vm)
         end
     end
-    
+
     -- Call holster to ensure all holster cleanup is performed
     self:Holster()
     hook.Remove("CalcMainActivity", "BaseAnimations")
-    
+
     -- Clean up web swing if active
     if self.CleanupWebSwing then
         self:CleanupWebSwing()
     end
-    
+
     if self.ConstraintController then
         -- Make sure constraint and rope are valid before removing
         if IsValid(self.ConstraintController.constraint) then
@@ -1415,23 +1256,23 @@ function SWEP:OnRemove()
         -- Clear the controller after removing the constraint
         self.ConstraintController = nil
     end
-    
+
     -- Clear any remaining rope dynamics state
     if RopeDynamics then
         RopeDynamics.PrevVelocity = nil
         RopeDynamics.LastLengthChange = nil
         RopeDynamics.LastCornerTime = nil
     end
-    
+
     -- Clear the ragdoll
     if IsValid(self.Ragdoll) then
         self.Ragdoll:Remove()
         self.Ragdoll = nil
     end
-    
+
     self.RagdollActive = false
     self:ResetAllSettings()
-    
+
     -- Make sure we're properly cleaning up hooks
     hook.Remove("PostSwingPhysics", "PendulumPhysics_PostProcess")
 end
@@ -1533,26 +1374,26 @@ function SWEP:GetSwingForce()
 end
 
 function SWEP:GetShortenSpeed()
-    return GetSwingSpeed() / 100 
+    return GetSwingSpeed() / 100
 end
 
 -- Add this function right before GatherSwingPointCandidates
 function SWEP:IsValidSwingPoint(pos, playerPos)
     -- Check if the ConVar allows sky attachments
     local allowSkyAttach = GetConVar("webswing_allow_sky_attach"):GetBool()
-    
+
     -- If sky attachments are allowed, skip the checks
     if allowSkyAttach then
         return true
     end
-    
+
     -- Check if the point is too high (potential sky attachment)
     local upTrace = util.TraceLine({
         start = pos,
         endpos = pos + Vector(0, 0, 100),
         mask = MASK_SOLID
     })
-    
+
     -- If nothing above us, this might be a sky point
     if not upTrace.Hit then
         -- Do an additional check for nearby surfaces
@@ -1563,7 +1404,7 @@ function SWEP:IsValidSwingPoint(pos, playerPos)
             Vector(0, 1, 0),
             Vector(0, -1, 0)
         }
-        
+
         -- Check for nearby surfaces in several directions
         for _, dir in ipairs(directions) do
             local surroundTrace = util.TraceLine({
@@ -1571,12 +1412,12 @@ function SWEP:IsValidSwingPoint(pos, playerPos)
                 endpos = pos + dir * 100,
                 mask = MASK_SOLID
             })
-            
+
             if surroundTrace.Hit and not surroundTrace.HitSky then
                 table.insert(surroundTraces, surroundTrace)
             end
         end
-        
+
         -- If we don't have at least 1 nearby surface, assume it's a sky point
         if #surroundTraces < 1 then
             return false
@@ -1585,18 +1426,18 @@ function SWEP:IsValidSwingPoint(pos, playerPos)
         -- If we directly hit sky, definitely reject
         return false
     end
-    
+
     -- Trace from player to swing point to ensure it's not blocked by sky
     local traceToPoint = util.TraceLine({
         start = playerPos,
         endpos = pos,
         mask = MASK_SOLID
     })
-    
+
     if traceToPoint.HitSky then
         return false
     end
-    
+
     -- If it passed all checks, it's valid
     return true
 end
@@ -1605,14 +1446,14 @@ end
 function SWEP:CalculateOptimalSkyHeight(eyePos, velocity, distToGround)
     -- Base height is proportional to distance to ground
     local baseHeight = math.max(distToGround * 1.5, 300)
-    
+
     -- Add height based on current speed (faster = higher potential)
     local speedFactor = math.min(velocity:Length() / 1000, 1)
     local speedBonus = speedFactor * 400
-    
+
     -- Calculate final height
     local finalHeight = baseHeight + speedBonus
-    
+
     -- Cap the height at reasonable limits
     return math.Clamp(finalHeight, 300, 1500)
 end
@@ -1621,19 +1462,19 @@ end
 function SWEP:GatherSwingPointCandidates()
     local ply = self.Owner
     if not IsValid(ply) then return {} end
-    
+
     local eyePos = ply:EyePos()
     local eyeAngles = ply:EyeAngles()
     local vel = ply:GetVelocity()
     local speed = vel:Length()
     local scanRadius = self.Range * GetConVar("webswing_map_range_mult"):GetFloat()
     local candidates = {}
-    
+
     -- Get user preferences
     local momentumFactor = GetMomentumPreservation()
     local groundSafety = GetGroundSafety()
     local allowSkyAttach = GetConVar("webswing_allow_sky_attach"):GetBool()
-    
+
     -- Check ground distance for emergency points
     local groundTrace = util.TraceLine({
         start = eyePos,
@@ -1642,12 +1483,12 @@ function SWEP:GatherSwingPointCandidates()
         mask = MASK_SOLID
     })
     local distToGround = groundTrace.Hit and groundTrace.HitPos:Distance(eyePos) or 1000
-    
+
     -- Dynamic scan parameters based on state
     local baseSteps = 16 -- Reduced from 24 for better performance
     local steps = baseSteps
     local halfAngle = 30
-    
+
     -- Adjust scan pattern based on speed and height
     if speed > 500 then
         -- At high speeds, focus more on forward arc
@@ -1658,19 +1499,19 @@ function SWEP:GatherSwingPointCandidates()
         halfAngle = Lerp(groundSafety, 30, 45)
         steps = math.floor(Lerp(groundSafety, baseSteps, 20))
     end
-    
+
     -- Calculate ideal swing direction based on momentum
     local idealDir = vel:GetNormalized()
     if speed < 100 then
         idealDir = ply:GetAimVector()
     end
-    
+
     -- Efficient forward cone scan
     local scannedDirections = {}
     for i = 1, steps do
         local angleProgress = (i - 1) / steps
         local yawOffset = 360 * angleProgress
-        
+
         -- Bias pitch based on ground proximity and speed
         local basePitch = -30
         if distToGround < 200 then
@@ -1678,42 +1519,42 @@ function SWEP:GatherSwingPointCandidates()
         elseif speed > 500 then
             basePitch = Lerp(momentumFactor, -30, -45)
         end
-        
+
         local pitchOffset = basePitch + math.random(-halfAngle, halfAngle)
         local scanAngles = Angle(eyeAngles.p + pitchOffset, eyeAngles.y + yawOffset, 0)
         local direction = scanAngles:Forward()
-        
+
         -- Cache direction to avoid duplicate traces
         local dirKey = string.format("%.1f_%.1f_%.1f", direction.x, direction.y, direction.z)
         if scannedDirections[dirKey] then continue end
         scannedDirections[dirKey] = true
-        
+
         -- Bias direction towards ideal path
         if speed > 100 then
             direction = LerpVector(momentumFactor * 0.5, direction, idealDir)
             direction:Normalize()
         end
-        
+
         local tr = util.TraceLine({
             start = eyePos,
             endpos = eyePos + direction * scanRadius,
             filter = ply,
             mask = MASK_SOLID
         })
-        
+
         if tr.Hit then
             -- Only check for corners if point is potentially useful
             local heightDiff = tr.HitPos.z - eyePos.z
             local isCorner = false
             local overhead = nil
-            
+
             -- Selective corner and overhead checks
-            if (heightDiff > -100 and heightDiff < 300) or 
+            if (heightDiff > -100 and heightDiff < 300) or
                (speed > 300 and tr.HitPos:Distance(eyePos + vel:GetNormalized() * 300) < 200) then
                 isCorner = self:IsCornerPoint(tr.HitPos, tr.HitNormal)
                 overhead = self:CheckOverheadClearance(tr.HitPos)
             end
-            
+
             -- Determine point type
             local pointType = "forward"
             if heightDiff > 100 then
@@ -1721,7 +1562,7 @@ function SWEP:GatherSwingPointCandidates()
             elseif speed > 300 and tr.HitPos:Distance(eyePos + vel:GetNormalized() * 300) < 200 then
                 pointType = "momentum"
             end
-            
+
             table.insert(candidates, {
                 pos = tr.HitPos,
                 normal = tr.HitNormal,
@@ -1732,12 +1573,12 @@ function SWEP:GatherSwingPointCandidates()
             })
         end
     end
-    
+
     -- Add emergency upward points only when necessary
     if distToGround < 200 and groundSafety > 0.5 and #candidates < 3 then
         local upSteps = math.floor(4 * groundSafety) -- Reduced from 8
         local upRadius = scanRadius * 0.4
-        
+
         for i = 1, upSteps do
             local angle = math.rad((i / upSteps) * 360)
             local offset = Vector(
@@ -1745,14 +1586,14 @@ function SWEP:GatherSwingPointCandidates()
                 math.sin(angle) * upRadius * 0.3,
                 upRadius
             )
-            
+
             local tr = util.TraceLine({
                 start = eyePos,
                 endpos = eyePos + offset,
                 filter = ply,
                 mask = MASK_SOLID
             })
-            
+
             if tr.Hit then
                 table.insert(candidates, {
                     pos = tr.HitPos,
@@ -1765,24 +1606,24 @@ function SWEP:GatherSwingPointCandidates()
             end
         end
     end
-    
+
     -- Add momentum-preserving points only at high speeds
     if speed > 500 and momentumFactor > 0.5 and #candidates < 5 then
         local momSteps = math.floor(3 * momentumFactor) -- Reduced from 6
         local momRadius = scanRadius * 0.6
-        
+
         for i = 1, momSteps do
             local progress = (i - 1) / momSteps
             local offset = vel:GetNormalized() * (momRadius * progress) +
                           Vector(0, 0, momRadius * 0.3 * (1 - progress))
-            
+
             local tr = util.TraceLine({
                 start = eyePos,
                 endpos = eyePos + offset,
                 filter = ply,
                 mask = MASK_SOLID
             })
-            
+
             if tr.Hit then
                 table.insert(candidates, {
                     pos = tr.HitPos,
@@ -1795,14 +1636,14 @@ function SWEP:GatherSwingPointCandidates()
             end
         end
     end
-    
+
     -- Add sky attachment points if enabled
     if allowSkyAttach then
         -- Calculate optimal sky height dynamically
         local skyHeight = self:CalculateOptimalSkyHeight(eyePos, vel, distToGround)
         local skySteps = 8 -- Number of sky points to add
         local skyRadius = scanRadius * 0.7 -- Slightly reduced radius for sky points
-        
+
         -- Calculate distribution pattern based on speed
         local pattern = {}
         if speed > 300 then
@@ -1823,12 +1664,12 @@ function SWEP:GatherSwingPointCandidates()
                 table.insert(pattern, Vector(math.cos(angle), math.sin(angle), 0))
             end
         end
-        
+
         -- Generate sky points using the pattern
         for _, dir in ipairs(pattern) do
             local offset = dir * skyRadius * 0.5
             local skyPoint = eyePos + offset + Vector(0, 0, skyHeight - eyePos.z)
-            
+
             -- Check if there's a clear path to the sky point
             local skyTrace = util.TraceLine({
                 start = eyePos,
@@ -1836,7 +1677,7 @@ function SWEP:GatherSwingPointCandidates()
                 filter = ply,
                 mask = MASK_SOLID
             })
-            
+
             if not skyTrace.Hit then
                 table.insert(candidates, {
                     pos = skyPoint,
@@ -1848,19 +1689,19 @@ function SWEP:GatherSwingPointCandidates()
                 })
             end
         end
-        
+
         -- Add forward-biased sky points for momentum preservation
         if speed > 300 then
             local forwardDist = math.min(speed * 0.5, skyRadius * 0.7)
             local forwardPoint = eyePos + vel:GetNormalized() * forwardDist + Vector(0, 0, skyHeight * 0.7)
-            
+
             local forwardTrace = util.TraceLine({
                 start = eyePos,
                 endpos = forwardPoint,
                 filter = ply,
                 mask = MASK_SOLID
             })
-            
+
             if not forwardTrace.Hit then
                 table.insert(candidates, {
                     pos = forwardPoint,
@@ -1873,7 +1714,7 @@ function SWEP:GatherSwingPointCandidates()
             end
         end
     end
-    
+
     -- Add emergency vertical check
     if #candidates == 0 then
         local up_tr = util.TraceLine({
@@ -1882,7 +1723,7 @@ function SWEP:GatherSwingPointCandidates()
             filter = ply,
             mask = MASK_SOLID
         })
-        
+
         if up_tr.Hit then
             table.insert(candidates, {
                 pos = up_tr.HitPos,
@@ -1892,12 +1733,12 @@ function SWEP:GatherSwingPointCandidates()
             })
         end
     end
-    
+
     -- Add dynamic swing points if available
     if #candidates < 4 and not GetConVar("webswing_manual_mode"):GetBool() then
         -- Generate dynamic points to help maintain flow
         local dynamicPoints = SwingTargeting:GenerateDynamicPoints(candidates, eyePos, vel, ply:GetAimVector())
-        
+
         -- Add dynamic points to candidates with sky check
         for _, dynamicPoint in ipairs(dynamicPoints) do
             -- Skip if too close to existing points
@@ -1908,11 +1749,11 @@ function SWEP:GatherSwingPointCandidates()
                     break
                 end
             end
-            
+
             -- Check that it's not a sky point before adding
             if not tooClose and self:IsValidSwingPoint(dynamicPoint.pos, eyePos) then
                 table.insert(candidates, dynamicPoint)
-                
+
                 -- Debug visualization for dynamic points
                 if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() then
                     debugoverlay.Sphere(dynamicPoint.pos, 8, 0.2, Color(0, 255, 255, 180))
@@ -1920,17 +1761,17 @@ function SWEP:GatherSwingPointCandidates()
                 end
             end
         end
-        
+
         if GetConVar("developer"):GetBool() then
             print(string.format("[Web Shooter] Added %d dynamic swing points", #dynamicPoints))
         end
     end
-    
+
     -- Apply curved path planning if the player is moving at a decent speed
     if speed > 200 and not GetConVar("webswing_manual_mode"):GetBool() then
         -- Apply curved path planning to add path target points
         local candidatesWithPaths = SwingTargeting:ApplyCurvedPathPlanning(candidates, eyePos, vel, ply:GetAimVector())
-        
+
         -- New: Verify each path point before accepting
         candidates = {}
         for _, candidate in ipairs(candidatesWithPaths) do
@@ -1938,21 +1779,26 @@ function SWEP:GatherSwingPointCandidates()
                 table.insert(candidates, candidate)
             end
         end
-        
+
         if GetConVar("developer"):GetBool() then
             print("[Web Shooter] Applied curved path planning")
         end
     end
-    
+
     -- Final safety check - verify each candidate
     local validCandidates = {}
     for _, candidate in ipairs(candidates) do
-        if self:IsValidSwingPoint(candidate.pos, eyePos) or 
+        if self:IsValidSwingPoint(candidate.pos, eyePos) or
            (candidate.type == "sky" and allowSkyAttach) then
             table.insert(validCandidates, candidate)
         end
     end
     
+    -- Apply Web of Shadows targeting analysis
+    if SwingTargeting and GetConVar("webswing_wos_targeting"):GetBool() then
+        validCandidates = SwingTargeting:AnalyzeWoSTargets(validCandidates, eyePos, vel, ply:GetAimVector(), FrameTime())
+    end
+
     return validCandidates
 end
 
@@ -1963,7 +1809,7 @@ function SWEP:CheckOverheadClearance(pos)
         endpos = pos - Vector(0, 0, 1000),
         mask = MASK_SOLID
     })
-    
+
     -- If point is very high up, assume good clearance
     if not heightCheck.Hit or heightCheck.HitPos:Distance(pos) > 500 then
         return {
@@ -1971,19 +1817,19 @@ function SWEP:CheckOverheadClearance(pos)
             height = 100
         }
     end
-    
+
     -- Quick upward check
     local tr = util.TraceLine({
         start = pos,
         endpos = pos + Vector(0, 0, 80), -- Reduced from 100 for better performance
         mask = MASK_SOLID
     })
-    
+
     -- If nothing directly above, do a cone check for better accuracy
     if not tr.Hit then
         local hasObstruction = false
         local angles = {30, 150, 270} -- Reduced number of checks from 8 to 3
-        
+
         for _, angle in ipairs(angles) do
             local rad = math.rad(angle)
             local checkDir = Vector(
@@ -1991,25 +1837,25 @@ function SWEP:CheckOverheadClearance(pos)
                 math.sin(rad) * 0.5,
                 0.8
             ):GetNormalized()
-            
+
             local coneTrace = util.TraceLine({
                 start = pos,
                 endpos = pos + checkDir * 60,
                 mask = MASK_SOLID
             })
-            
+
             if coneTrace.Hit then
                 hasObstruction = true
                 break
             end
         end
-        
+
         return {
             clear = not hasObstruction,
             height = hasObstruction and 60 or 80
         }
     end
-    
+
     return {
         clear = false,
         height = tr.HitPos:Distance(pos)
@@ -2024,14 +1870,14 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
     local vel = playerState.velocity
     local speedSqr = vel:LengthSqr()
     local speed = vel:Length()
-    
+
     -- Get user preferences
     local momentumFactor = GetMomentumPreservation()
     local groundSafety = GetGroundSafety()
     local assistStrength = GetAssistStrength()
     local maxWebLength = GetWebLength()
     local swingCurve = GetSwingCurve()
-    
+
     -- Check ground distance - needed for all candidate types
     local groundTrace = util.TraceLine({
         start = eyePos,
@@ -2040,51 +1886,91 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
         mask = MASK_SOLID
     })
     local distToGround = groundTrace.Hit and groundTrace.HitPos:Distance(eyePos) or 1000
-    
+
+    -- REFINEMENT: Enhanced Situational Prioritization - Escape Route Logic
+    -- Detect if player is in a confined space
+    local isConfined = false
+    local confinedDirections = 0
+    local confinedCheckDist = 150 -- Distance to check for confinement
+
+    -- Only do this check when it matters (not at high speeds)
+    if speed < 300 then
+        local checkDirections = {
+            Vector(1, 0, 0),
+            Vector(-1, 0, 0),
+            Vector(0, 1, 0),
+            Vector(0, -1, 0),
+            Vector(0.7, 0.7, 0),
+            Vector(-0.7, 0.7, 0),
+            Vector(0.7, -0.7, 0),
+            Vector(-0.7, -0.7, 0)
+        }
+
+        for _, dir in ipairs(checkDirections) do
+            local confineTrace = util.TraceLine({
+                start = eyePos,
+                endpos = eyePos + dir * confinedCheckDist,
+                filter = ply,
+                mask = MASK_SOLID_BRUSHONLY
+            })
+
+            if confineTrace.Hit then
+                confinedDirections = confinedDirections + 1
+            end
+        end
+
+        isConfined = confinedDirections >= 3 -- If 3+ directions are blocked, we're confined
+
+        -- Debug visualization for confined space detection
+        if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() and isConfined then
+            debugoverlay.Text(eyePos + Vector(0, 0, 20), "CONFINED SPACE", 0.5, true)
+        end
+    end
+
     -- Check if this is a curved path point
     if candidate.isPathPoint then
         -- For curved path points, use a specialized scoring function
         local pathScore = SwingTargeting:EvaluatePathTarget(candidate)
-        
+
         -- Adjust the path score based on player settings and state
         if speedSqr > 90000 then -- Over 300 units/sec
             pathScore = pathScore * (1 + swingCurve * 0.5) -- Higher curve preference gives higher path scores
         end
-        
+
         -- Ensure path points are still subject to some basic constraints
         local dist = candidate.pos:Distance(eyePos)
         if dist > maxWebLength then
             return -1000 -- Still reject points beyond max web length
         end
-        
+
         -- Emergency conditions can override path following
         if distToGround < 100 and candidate.pos.z < eyePos.z then
             pathScore = pathScore * 0.5 -- Reduce priority when close to ground
         end
-        
+
         return pathScore
     end
-    
+
     -- Base distance scoring with web length limit
     local dist = candidate.pos:Distance(eyePos)
     if dist > maxWebLength then
         return -1000 -- Immediately reject points beyond max web length
     end
-    
+
     -- Distance scoring with momentum consideration
     local baseOptimalDist = 500
     local speedBonus = math.sqrt(speedSqr) * 0.5 * momentumFactor
     local optimalDist = math.Clamp(baseOptimalDist + speedBonus, 300, maxWebLength * 0.8)
     local distScore = 1 - math.abs(dist - optimalDist) / optimalDist
     score = score + distScore * (0.3 * assistStrength)
-    
+
     -- Height evaluation with ground safety and swing curve
     local heightDiff = candidate.pos.z - eyePos.z
     local optimalHeight = self.OptimalSwingHeight or 150
-    
+
     -- Adjust optimal height based on swing curve preference
     optimalHeight = optimalHeight * (1 + swingCurve * 0.5)
-    
+
     -- Adjust height scoring based on ground proximity
     if distToGround < 200 and groundSafety > 0 then
         -- Strong preference for upward points when close to ground
@@ -2095,7 +1981,7 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
             score = score - (groundDanger * groundSafety * 0.5)
         end
     end
-    
+
     -- Enhanced arc scoring based on swing curve preference
     local arcScore = 0
     if candidate.type == "overhead" then
@@ -2106,7 +1992,7 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
         local idealHeight = optimalHeight * (1 + (speed / 1000) * swingCurve)
         local heightScore = 1 - math.abs(heightDiff - idealHeight) / idealHeight
         arcScore = math.Clamp(heightScore, 0, 1) * (0.3 * assistStrength)
-        
+
         -- Add lateral arc consideration
         local velDir = vel:GetNormalized()
         local rightVec = velDir:Cross(Vector(0, 0, 1))
@@ -2115,51 +2001,309 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
         arcScore = arcScore + lateralScore
     end
     score = score + arcScore
-    
+
+    -- REFINEMENT: Negative Space Scoring / "Openness" Factor
+    -- Check for room to maneuver around the swing arc
+    local opennessScore = 0
+    if self.ObstaclePrediction then
+        -- Only do this check if the main trajectory is clear
+        local ropeLength = dist
+        local isObstructed = self.ObstaclePrediction:IsTrajectoryObstructed(
+            candidate.pos,
+            eyePos,
+            vel,
+            ropeLength,
+            ply
+        )
+
+        if not isObstructed then
+            -- Check wider areas around the swing arc
+            local openSpaceChecks = 0
+            local openSpaceHits = 0
+            local checkWidth = 80 -- Width to check on each side
+
+            -- Calculate swing arc direction
+            local toPoint = (candidate.pos - eyePos):GetNormalized()
+            local arcRight = toPoint:Cross(Vector(0, 0, 1)):GetNormalized()
+            local arcUp = arcRight:Cross(toPoint):GetNormalized()
+
+            -- Check to the sides and above the arc
+            local checkDirections = {
+                arcRight * checkWidth,
+                arcRight * -checkWidth,
+                arcUp * checkWidth
+            }
+
+            for _, offset in ipairs(checkDirections) do
+                openSpaceChecks = openSpaceChecks + 1
+
+                -- Check at a few points along the arc
+                for t = 0.3, 0.7, 0.2 do -- Check at 30%, 50%, and 70% along the arc
+                    local arcPoint = eyePos + toPoint * (dist * t)
+                    local wideTrace = util.TraceHull({
+                        start = arcPoint,
+                        endpos = arcPoint + offset,
+                        mins = Vector(-10, -10, -10),
+                        maxs = Vector(10, 10, 10),
+                        filter = ply,
+                        mask = MASK_SOLID_BRUSHONLY
+                    })
+
+                    if wideTrace.Hit then
+                        openSpaceHits = openSpaceHits + 1
+                    end
+                end
+            end
+
+            -- Calculate openness score based on how many checks hit obstacles
+            local opennessFactor = 1 - (openSpaceHits / (openSpaceChecks * 3)) -- 3 checks per direction
+            opennessScore = opennessFactor * 0.2 * assistStrength
+
+            -- Debug visualization
+            if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() and opennessScore > 0.1 then
+                debugoverlay.Text(candidate.pos + Vector(0, 0, 15),
+                    string.format("Open: %.1f", opennessScore * 5),
+                    0.2, true)
+            end
+        end
+    end
+    score = score + opennessScore
+
     -- Apply momentum-aware targeting from the SwingTargeting module
     if speedSqr > 40000 then -- Only apply momentum targeting at speeds over 200
         local momentumScore = SwingTargeting:EvaluateMomentumPreservation(candidate, eyePos, vel, playerState.aimVector)
         score = score + momentumScore * momentumFactor
+
+        -- REFINEMENT: Flow Maintenance Bonus
+        -- If we have high momentum multiplier, give bonus to points that align with momentum
+        if SwingTargeting.History.momentumData.momentumMultiplier > 1.2 then
+            local toPoint = (candidate.pos - eyePos):GetNormalized()
+            local momentumAlign = SwingTargeting.History.momentumData.momentumDirection:Dot(toPoint)
+
+            if momentumAlign > 0.85 then -- Very high alignment with momentum direction
+                local flowBonus = (momentumAlign - 0.85) * 10 * 0.3 -- Scale 0.85-1.0 to 0-0.3
+                score = score + flowBonus * momentumFactor
+
+                -- Debug visualization
+                if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() then
+                    debugoverlay.Text(candidate.pos + Vector(0, 0, 30),
+                        string.format("Flow: +%.1f", flowBonus * 10),
+                        0.2, true)
+                end
+            end
+        end
     end
-    
+
     -- Special handling for dynamic points
     if candidate.isDynamic then
         -- Dynamic points get a base bonus to make them viable
         score = score + 0.2
-        
+
+        -- Edge points get an additional bonus
+        if candidate.isEdge then
+            score = score + 0.1 * assistStrength
+        end
+
         -- But ensure they're even more strongly affected by momentum direction
         if speedSqr > 40000 then -- Only at higher speeds
             local velDir = vel:GetNormalized()
             local toPoint = (candidate.pos - eyePos):GetNormalized()
             local momentumAlign = velDir:Dot(toPoint)
-            
+
             -- Only boost score if it aligns well with momentum
             if momentumAlign > 0.7 then
                 score = score + momentumAlign * 0.3 * momentumFactor
             end
         end
     end
-    
+
     -- Momentum preservation scoring with curve influence
     if speedSqr > 40000 then -- Only consider momentum above certain speed
         local velDir = vel:GetNormalized()
         local toPoint = (candidate.pos - eyePos):GetNormalized()
         local momentumAlign = velDir:Dot(toPoint)
-        
+
         -- Calculate ideal swing arc with curve influence
         local rightVec = velDir:Cross(Vector(0, 0, 1))
         local curveOffset = Vector(0, 0, optimalHeight * swingCurve)
         local idealSwingPoint = eyePos + velDir * optimalDist + curveOffset
         local toIdealPoint = (idealSwingPoint - eyePos):GetNormalized()
         local idealAlign = toPoint:Dot(toIdealPoint)
-        
+
         -- Combine momentum and ideal path scores
         local baseMomentumScore = math.Clamp(momentumAlign + 0.5, 0, 1) * momentumFactor
         local pathScore = math.Clamp(idealAlign + 0.5, 0, 1) * assistStrength
-        
+
         -- Adjust based on curve preference
         local curveWeight = Lerp(swingCurve, 0.7, 0.3) -- More curve means less emphasis on pure momentum
         score = score + (baseMomentumScore * curveWeight + pathScore * (1 - curveWeight))
+    end
+
+    -- REFINEMENT: Candidate Diversity & Clustering Avoidance
+    -- Apply similarity penalty for points that are too close to better points
+    if allCandidates and #allCandidates > 1 then
+        local similarityPenalty = 0
+
+        -- Only check against candidates that have already been evaluated (they'll have a .score property)
+        for _, otherCandidate in ipairs(allCandidates) do
+            if otherCandidate ~= candidate and otherCandidate.score and otherCandidate.score > score then
+                local proximity = candidate.pos:Distance(otherCandidate.pos)
+
+                if proximity < 150 then
+                    -- Calculate how similar the swing would be
+                    local toCandidate = (candidate.pos - eyePos):GetNormalized()
+                    local toOther = (otherCandidate.pos - eyePos):GetNormalized()
+                    local dirSimilarity = toCandidate:Dot(toOther) -- 1 = identical direction, -1 = opposite
+
+                    if dirSimilarity > 0.85 then -- Very similar swing direction
+                        -- Penalty based on proximity and direction similarity
+                        local penalty = (1 - (proximity / 150)) * dirSimilarity * 0.15
+                        similarityPenalty = math.max(similarityPenalty, penalty)
+                    end
+                end
+            end
+        end
+
+        -- Apply the penalty
+        if similarityPenalty > 0 then
+            score = score - similarityPenalty
+
+            -- Debug visualization
+            if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() then
+                debugoverlay.Text(candidate.pos + Vector(0, 0, 10),
+                    string.format("Similar: -%.1f", similarityPenalty * 10),
+                    0.2, true)
+            end
+        end
+    end
+
+    -- REFINEMENT: Enhanced Situational Prioritization - Escape Route Logic
+    -- If we're in a confined space, prioritize points that lead out
+    if isConfined then
+        -- Check if this point leads out of the confined area
+        local toPoint = (candidate.pos - eyePos):GetNormalized()
+        local escapeScore = 0
+
+        -- Check if the point is outside the confined area
+        local escapeTrace = util.TraceLine({
+            start = eyePos,
+            endpos = eyePos + toPoint * confinedCheckDist * 2,
+            filter = ply,
+            mask = MASK_SOLID_BRUSHONLY
+        })
+
+        if not escapeTrace.Hit then
+            -- This point leads to open space - significant bonus
+            escapeScore = 0.4 * assistStrength
+        elseif escapeTrace.Fraction > 0.7 then
+            -- This point leads to a more open area - moderate bonus
+            escapeScore = 0.2 * assistStrength
+        end
+
+        -- Additional bonus for upward points when confined
+        if heightDiff > 50 then
+            escapeScore = escapeScore + 0.2 * assistStrength
+        end
+
+        score = score + escapeScore
+
+        -- Debug visualization
+        if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() and escapeScore > 0 then
+            debugoverlay.Text(candidate.pos + Vector(0, 0, 25),
+                string.format("Escape: +%.1f", escapeScore * 10),
+                0.2, true)
+        end
+    end
+
+    -- REFINEMENT: More Explicit Risk vs. Reward Scoring
+    -- Calculate risk factors
+    local riskScore = 0
+
+    -- Risk: Proximity to ground when below player
+    if heightDiff < 0 and distToGround < 300 then
+        riskScore = riskScore + math.abs(heightDiff) / 300 * 0.3
+    end
+
+    -- Risk: Attachment to small/unstable entities
+    if IsValid(candidate.entity) and not candidate.entity:IsWorld() then
+        local phys = candidate.entity:GetPhysicsObject()
+        if IsValid(phys) then
+            -- Check if entity is small or moving
+            local mass = phys:GetMass()
+            local entityVel = phys:GetVelocity():Length()
+
+            if mass < 100 or entityVel > 50 then
+                riskScore = riskScore + 0.2
+            end
+        end
+    end
+
+    -- Reward factors
+    local rewardScore = 0
+
+    -- Reward: High momentum alignment at high speeds
+    if speedSqr > 90000 then -- Over 300 units/sec
+        local toPoint = (candidate.pos - eyePos):GetNormalized()
+        local momentumAlign = vel:GetNormalized():Dot(toPoint)
+
+        if momentumAlign > 0.8 then
+            rewardScore = rewardScore + (momentumAlign - 0.8) * 5 * 0.3 -- Scale 0.8-1.0 to 0-0.3
+        end
+    end
+
+    -- Reward: Thread the needle opportunities
+    if self.ObstaclePrediction then
+        local threadNeedleScore = self.ObstaclePrediction:DetectThreadNeedle(
+            candidate.pos,
+            eyePos,
+            vel,
+            dist,
+            ply
+        )
+
+        if threadNeedleScore > 0 then
+            rewardScore = rewardScore + threadNeedleScore * 2 -- Amplify thread-needle bonus
+        end
+    end
+
+    -- Reward: Being part of a good curved path
+    if candidate.type == "curved_path" then
+        rewardScore = rewardScore + 0.2
+    end
+
+    -- Apply risk vs reward calculation
+    -- Scale based on player preferences
+    local riskTolerance = momentumFactor -- Use momentum factor as proxy for risk tolerance
+    local riskWeight = 1.0 - riskTolerance * 0.5 -- Less risk penalty for high momentum players
+    local rewardWeight = assistStrength
+
+    -- Apply to score
+    score = score + (rewardScore * rewardWeight) - (riskScore * riskWeight)
+
+    -- Debug visualization for risk/reward
+    if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() and (riskScore > 0.1 or rewardScore > 0.1) then
+        if rewardScore > riskScore then
+            debugoverlay.Text(candidate.pos + Vector(0, 0, 35),
+                string.format("R/R: +%.1f", (rewardScore * rewardWeight - riskScore * riskWeight) * 10),
+                0.2, true)
+        else
+            debugoverlay.Text(candidate.pos + Vector(0, 0, 35),
+                string.format("R/R: -%.1f", (riskScore * riskWeight - rewardScore * rewardWeight) * 10),
+                0.2, true)
+        end
+    end
+
+    -- Apply Web of Shadows targeting score
+    if SwingTargeting then
+        local wosScore = SwingTargeting:ApplyWoSTargetingScore(candidate, playerState.eyePos, vel)
+        score = score + wosScore
+        
+        -- Debug visualization for WoS targeting
+        if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() and wosScore > 0.1 then
+            debugoverlay.Text(candidate.pos + Vector(0, 0, 45),
+                string.format("WoS: +%.1f", wosScore * 10),
+                0.2, true)
+        end
     end
     
     -- Corner point bonus with curve consideration
@@ -2172,14 +2316,14 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
         cornerBonus = cornerBonus * (1 - swingCurve * 0.3)
         score = score + cornerBonus
     end
-    
+
     -- Overhead clearance scoring
     if candidate.overhead then
-        local clearanceScore = candidate.overhead.clear and 0.2 or 
+        local clearanceScore = candidate.overhead.clear and 0.2 or
                              (candidate.overhead.height / 100) * 0.1
         score = score + clearanceScore * assistStrength
     end
-    
+
     -- Map-specific adjustments with curve influence
     if self.MapAnalysis and self.MapAnalysis.analyzed then
         -- Adjust for building density
@@ -2189,7 +2333,7 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
                 score = score + (0.1 * assistStrength * (1 + swingCurve * 0.5))
             end
         end
-        
+
         -- Adjust for open spaces
         if self.MapAnalysis.openSpaceRatio > 0.7 then
             -- In open areas, prefer longer swings for momentum, but consider curve
@@ -2198,7 +2342,7 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
             end
         end
     end
-    
+
     -- Emergency recovery scoring
     if distToGround < 100 and speedSqr < 40000 then
         -- Desperate times call for desperate measures
@@ -2206,12 +2350,12 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
             score = score + (1.0 * groundSafety) -- Strong preference for any upward point
         end
     end
-    
+
     -- Special scoring for sky points
     if candidate.type == "sky" or candidate.type == "sky_momentum" then
         -- Base score for sky points
         score = score + 0.3
-        
+
         -- Bonus for momentum-preserving sky points
         if candidate.type == "sky_momentum" and speedSqr > 90000 then -- Speed > 300
             local velDir = vel:GetNormalized()
@@ -2219,13 +2363,13 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
             local momentumAlign = velDir:Dot(toPoint)
             score = score + momentumAlign * 0.4 * momentumFactor
         end
-        
+
         -- Emergency sky point bonus when no other good points are available
         if allCandidates and #allCandidates < 3 and distToGround < 200 then
             score = score + 0.3 * groundSafety
         end
     end
-    
+
     --------------------------------------------------------------------
     -- Begin Enhanced Swing Point Evaluation (New factors added here) --
     --------------------------------------------------------------------
@@ -2262,7 +2406,7 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
     end
     --------------------------------------------------------------------
     -- End Enhanced Swing Point Evaluation ---------------------------
-    
+
     -- In SWEP:EvaluateSwingCandidate, after your existing emergency recovery scoring block,
     -- add the following code:
 
@@ -2270,10 +2414,10 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
     if self.MapAnalysis and self.MapAnalysis.analyzed then
         local buildingDensity = self.MapAnalysis.buildingDensity or 0
         local openSpaceRatio = self.MapAnalysis.openSpaceRatio or 0
-        
+
         -- Calculate distance from the player for context-based decisions
         local dist = candidate.pos:Distance(eyePos)
-        
+
         if buildingDensity > 0.7 then
             -- Dense urban environment: favor nearby, accessible points and corner attachments.
             if dist < 400 then
@@ -2281,7 +2425,7 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
             else
                 score = score - 0.1 * assistStrength  -- penalty for being too far in dense areas
             end
-            
+
             -- Penalize overly high overhead points in a dense urban setting.
             if candidate.type == "overhead" and (candidate.pos.z - eyePos.z) > 300 then
                 score = score - 0.15 * assistStrength
@@ -2291,14 +2435,14 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
             if dist > 600 then
                 score = score + 0.15 * momentumFactor
             end
-            
+
             -- Provide additional bonus for sky or momentum-based swing points.
             if candidate.type == "sky" or candidate.type == "sky_momentum" then
                 score = score + 0.1 * assistStrength
             end
         end
     end
-    
+
     -- Additional Inertia-Based (Neural-like) Scoring Factor:
     -- When the player is moving fast, we predict the near-future velocity and add a bonus
     -- if the candidate point aligns with the predicted direction.
@@ -2319,6 +2463,21 @@ function SWEP:EvaluateSwingCandidate(candidate, playerState, allCandidates)
         score = score + predictedAlignment * 0.2  -- Tune this bonus weight as necessary
     end
 
+    -- Apply obstacle prediction and avoidance scoring
+    if self.ObstaclePrediction then
+        -- Get obstacle avoidance score (negative if obstructed, positive bonus for thread-the-needle)
+        local obstacleScore = self.ObstaclePrediction:EvaluateObstacleAvoidance(candidate, eyePos, vel, ply)
+
+        -- Apply the obstacle score to the final score
+        score = score + obstacleScore
+
+        -- Debug visualization for obstacle prediction
+        if CLIENT and GetConVar("webswing_obstacle_debug"):GetBool() and obstacleScore > 0 then
+            debugoverlay.Sphere(candidate.pos, 5, 0.2, Color(0, 255, 255, 180))
+            debugoverlay.Text(candidate.pos, "Thread Needle", 0.2, true)
+        end
+    end
+
     return score
 end
 
@@ -2326,12 +2485,12 @@ end
 function SWEP:FindPotentialSwingPoints()
     local ply = self.Owner
     if not IsValid(ply) then return nil end
-    
+
     -- Get user preferences for logging
     local assistStrength = GetAssistStrength()
     local momentumFactor = GetMomentumPreservation()
     local groundSafety = GetGroundSafety()
-    
+
     -- Gather initial state for logging
     local vel = ply:GetVelocity()
     local speed = vel:Length()
@@ -2343,15 +2502,15 @@ function SWEP:FindPotentialSwingPoints()
         mask = MASK_SOLID
     })
     local distToGround = groundTrace.Hit and groundTrace.HitPos:Distance(eyePos) or 1000
-    
+
     -- Debug info about current state
     if GetConVar("developer"):GetBool() then
         print("\n[Web Shooter] Starting point search:")
         print(string.format("  Speed: %.1f, Height: %.1f", speed, distToGround))
-        print(string.format("  Preferences - Assist: %.1f, Momentum: %.1f, Safety: %.1f", 
+        print(string.format("  Preferences - Assist: %.1f, Momentum: %.1f, Safety: %.1f",
             assistStrength, momentumFactor, groundSafety))
     end
-    
+
     local candidates = self:GatherSwingPointCandidates()
     if #candidates == 0 then
         if GetConVar("developer"):GetBool() then
@@ -2362,28 +2521,31 @@ function SWEP:FindPotentialSwingPoints()
             print(string.format("[Web Shooter] Found %d initial candidates", #candidates))
         end
     end
-    
+
     local playerState = {
         velocity = vel,
         onGround = ply:IsOnGround(),
         eyePos = eyePos,
         aimVector = ply:GetAimVector()
     }
-    
+
     -- Get AI prediction for swing targeting
     local prediction = SwingTargeting:PredictNextTargetPoint(ply, eyePos, vel, ply:GetAimVector())
-    
+
     local bestCandidate = nil
     local bestScore = -1
     local debugScores = {}
-    
+
     for i, candidate in ipairs(candidates) do
         local baseScore = self:EvaluateSwingCandidate(candidate, playerState, candidates)
-        
+
         -- Apply prediction score modifier from AI Swing Targeting system
         local predictionScore = SwingTargeting:ApplyPredictionToCandidate(candidate, prediction, eyePos)
         local finalScore = baseScore + predictionScore
-        
+
+        -- REFINEMENT: Store the score in the candidate for use in clustering avoidance
+        candidate.score = finalScore
+
         -- Store debug info about scoring
         if GetConVar("developer"):GetBool() then
             table.insert(debugScores, {
@@ -2396,20 +2558,32 @@ function SWEP:FindPotentialSwingPoints()
                 dist = candidate.pos:Distance(eyePos)
             })
         end
-        
+
         -- Debug visualization
         if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() then
             local duration = 0.1
             local color = Color(255, 255 * (1 - finalScore), 0, 180)
+
+            -- If obstacle prediction is enabled, show obstructed paths in red
+            if self.ObstaclePrediction and GetConVar("webswing_obstacle_debug"):GetBool() then
+                local obstacleScore = self.ObstaclePrediction:EvaluateObstacleAvoidance(candidate, eyePos, vel, ply)
+                if obstacleScore < 0 then
+                    color = Color(255, 0, 0, 180) -- Red for obstructed paths
+                    debugoverlay.Text(candidate.pos, "Obstructed", duration, true)
+                elseif obstacleScore > 0 then
+                    color = Color(0, 255, 255, 180) -- Cyan for thread-the-needle opportunities
+                end
+            end
+
             debugoverlay.Sphere(candidate.pos, 3, duration, color)
         end
-        
+
         if finalScore > bestScore then
             bestScore = finalScore
             bestCandidate = candidate
         end
     end
-    
+
     -- Log detailed scoring info if in developer mode
     if GetConVar("developer"):GetBool() and #debugScores > 0 then
         print("\n[Web Shooter] Candidate Scores:")
@@ -2421,28 +2595,28 @@ function SWEP:FindPotentialSwingPoints()
             end
         end
     end
-    
+
     -- Debug visualization for prediction
     if CLIENT and GetConVar("webswing_show_ai_indicator"):GetBool() and prediction and prediction.targetPos then
         local duration = 0.1
         debugoverlay.Sphere(prediction.targetPos, 5, duration, Color(0, 150, 255, 180))
         debugoverlay.Line(eyePos, prediction.targetPos, duration, Color(0, 150, 255, 180))
-        
+
         if bestCandidate then
             debugoverlay.Line(eyePos, bestCandidate.pos, duration, Color(0, 255, 0, 180))
         end
     end
-    
+
     -- If no good candidate found or score is too low, use fallback
     if not bestCandidate or bestScore < 0.2 then
         if GetConVar("developer"):GetBool() then
-            print("[Web Shooter] Using fallback trace due to " .. 
+            print("[Web Shooter] Using fallback trace due to " ..
                 (not bestCandidate and "no candidate" or "low score"))
         end
-        
+
         -- Calculate fallback range based on speed
         local fallbackRange = math.Clamp(300 + speed * 0.5, 300, 1000)
-        
+
         -- Try direct aim trace first
         local aimTrace = util.TraceLine({
             start = eyePos,
@@ -2450,20 +2624,20 @@ function SWEP:FindPotentialSwingPoints()
             filter = ply,
             mask = MASK_SOLID
         })
-        
+
         if aimTrace.Hit then
             if GetConVar("developer"):GetBool() then
                 print(string.format("[Web Shooter] Fallback found point at distance %.1f",
                     aimTrace.HitPos:Distance(eyePos)))
             end
-            
+
             return {
                 pos = aimTrace.HitPos,
                 normal = aimTrace.HitNormal,
                 entity = aimTrace.Entity
             }
         end
-        
+
         -- If direct trace fails and we're close to ground, try upward trace
         if distToGround < 200 then
             local upTrace = util.TraceLine({
@@ -2472,12 +2646,12 @@ function SWEP:FindPotentialSwingPoints()
                 filter = ply,
                 mask = MASK_SOLID
             })
-            
+
             if upTrace.Hit then
                 if GetConVar("developer"):GetBool() then
                     print("[Web Shooter] Using emergency upward point")
                 end
-                
+
                 return {
                     pos = upTrace.HitPos,
                     normal = upTrace.HitNormal,
@@ -2485,18 +2659,18 @@ function SWEP:FindPotentialSwingPoints()
                 }
             end
         end
-        
+
         if GetConVar("developer"):GetBool() then
             print("[Web Shooter] No valid point found, even with fallback")
         end
         return nil
     end
-    
+
     if GetConVar("developer"):GetBool() then
         print(string.format("[Web Shooter] Selected point: Type=%s, Score=%.2f",
             bestCandidate.type, bestScore))
     end
-    
+
     return {
         pos = bestCandidate.pos,
         normal = bestCandidate.normal,
@@ -2510,40 +2684,40 @@ end
 function SWEP:IsCornerPoint(hitPos, hitNormal)
     -- Reduced check distance for better accuracy and performance
     local checkDist = 20  -- Reduced from 30
-    
+
     -- Only check perpendicular directions relative to hit normal
     local right = hitNormal:Cross(Vector(0, 0, 1)):GetNormalized()
     local up = right:Cross(hitNormal):GetNormalized()
-    
+
     local directions = {
         right,
         right * -1,
         up,
         up * -1
     }
-    
+
     local gaps = 0
     local traces = 0 -- Track number of traces performed
-    
+
     for _, dir in ipairs(directions) do
         -- Skip if we've already found enough gaps or too many traces
         if gaps >= 2 or traces >= 3 then break end
-        
+
         -- Skip direction if it's too close to hit normal
         if math.abs(dir:Dot(hitNormal)) > 0.1 then continue end
-        
+
         traces = traces + 1
         local tr = util.TraceLine({
             start = hitPos + hitNormal * 2, -- Reduced offset for more accurate corner detection
             endpos = hitPos + hitNormal * 2 + dir * checkDist,
             mask = MASK_SOLID
         })
-        
+
         if not tr.Hit then
             gaps = gaps + 1
         end
     end
-    
+
     return gaps >= 2  -- If there are 2 or more gaps, it's likely a corner
 end
 
@@ -2551,20 +2725,20 @@ end
 function SWEP:EvaluateSwingPoint(point, playerPos, playerVel, isCorner, speedSqr, isCeiling)
     local score = 0
     speedSqr = speedSqr or 0
-    
+
     -- Distance factor (prefer points at medium distance)
     local dist = point:Distance(playerPos)
     local optimalDist = math.Clamp(500 + speedSqr * 0.01, 300, 800)
     local distScore = 1 - math.abs(dist - optimalDist) / optimalDist
     score = score + distScore * 0.3
-    
+
     -- Height factor using map-specific optimal height
     local heightDiff = point.z - playerPos.z
     if heightDiff < 0 and not isCeiling then
         -- Allow downward points but with adjusted scoring
         local downwardPenalty = math.abs(heightDiff) / 1000 -- Less severe penalty
         score = score - downwardPenalty * 0.3 -- Reduced penalty multiplier
-        
+
         -- If moving fast enough, allow downward points more freely
         if playerVel and playerVel:Length() > 200 then
             score = score + 0.2 -- Bonus for maintaining momentum while swinging down
@@ -2578,7 +2752,7 @@ function SWEP:EvaluateSwingPoint(point, playerPos, playerVel, isCorner, speedSqr
             local optimalHorizDist = playerVel:Length() > 100 and 100 or 0
             local horizScore = 1 - math.abs(horizontalDist - optimalHorizDist) / 200
             score = score + horizScore * 0.4
-            
+
             -- Bonus for being high enough but not too high
             local optimalHeight = math.Clamp(heightDiff, 100, 300)
             score = score + (optimalHeight / 300) * 0.3
@@ -2590,39 +2764,39 @@ function SWEP:EvaluateSwingPoint(point, playerPos, playerVel, isCorner, speedSqr
             score = score + heightScore * 0.3
         end
     end
-    
+
     -- Momentum factor (prefer points that maintain momentum)
     if playerVel and playerVel:Length() > 50 then
         local velDir = playerVel:GetNormalized()
         local toPoint = (point - playerPos):GetNormalized()
         local dotProduct = velDir:Dot(toPoint)
-        
+
         -- For ceiling points, we want to maintain forward momentum
         if isCeiling then
             local horizontalVel = Vector(velDir.x, velDir.y, 0):GetNormalized()
             local horizontalToPoint = Vector(toPoint.x, toPoint.y, 0):GetNormalized()
             dotProduct = horizontalVel:Dot(horizontalToPoint)
         end
-        
+
         local momentumScore = math.Clamp(dotProduct + 1, 0, 1)
         score = score + momentumScore * 0.3
     end
-    
+
     -- Corner bonus
     if isCorner then
         score = score + 0.2
     end
-    
+
     -- Ceiling bonus
     if isCeiling then
         score = score + 0.3
     end
-    
+
     -- Ensure downward points are still possible by setting a minimum score
     if heightDiff < 0 and score > -0.5 then
         score = math.max(score, 0.1) -- Ensure a minimum positive score for valid downward points
     end
-    
+
     return score
 end
 
@@ -2642,7 +2816,7 @@ function SWEP:UpdateMapParameters()
     else
         self.Range = self.BaseRange
     end
-     
+
     -- Adjust optimal swing height based on average building height
     local optimalHeightRatio = math.Clamp(self.MapAnalysis.averageHeight / 1000, 0.5, 2)
     self.OptimalSwingHeight = 150 * optimalHeightRatio
@@ -2652,7 +2826,7 @@ function SWEP:UpdateMapParameters()
     else
         self.SearchPoints = math.floor(16 * (1 + self.MapAnalysis.buildingDensity))
     end
-     
+
     -- Adjust range based on wind speed if available
     if self.Environment and self.Environment.windSpeed then
          local windFactor = math.Clamp(self.Environment.windSpeed / 200, 0, 0.5)
@@ -2783,7 +2957,7 @@ end
 -- Add this helper function near the top of the file
 function SWEP:SafelyCopyPlayerData(ply)
     if not IsValid(ply) then return nil end
-    
+
     -- Check if duplicator library exists and is not restricted
     if duplicator and duplicator.CopyEntTable then
         local success, result = pcall(function()
@@ -2793,7 +2967,7 @@ function SWEP:SafelyCopyPlayerData(ply)
             return result
         end
     end
-    
+
     -- Fallback: Create minimal entity data manually
     return {
         Pos = ply:GetPos(),
@@ -2812,7 +2986,7 @@ end
 -- Add this helper function to safely apply entity data
 function SWEP:SafelyApplyEntityData(ent, data)
     if not IsValid(ent) or not data then return false end
-    
+
     local success = pcall(function()
         -- Apply basic properties
         ent:SetPos(data.Pos or Vector(0,0,0))
@@ -2820,42 +2994,42 @@ function SWEP:SafelyApplyEntityData(ent, data)
         ent:SetModel(data.Model or "models/player/kleiner.mdl")
         ent:SetSkin(data.Skin or 0)
         ent:SetModelScale(data.ModelScale or 1, 0)
-        
+
         -- Apply visual properties
         if data.Material then ent:SetMaterial(data.Material) end
         if data.Color then ent:SetColor(data.Color) end
         if data.RenderMode then ent:SetRenderMode(data.RenderMode) end
         if data.RenderFX then ent:SetRenderFX(data.RenderFX) end
-        
+
         -- Apply bodygroups if available
         if data.Bodygroups then
             for _, bg in ipairs(data.Bodygroups) do
                 ent:SetBodygroup(bg.id or 0, bg.num or 0)
             end
         end
-        
+
         -- If duplicator is available, try to use it for additional properties
         if duplicator and duplicator.DoGeneric then
             duplicator.DoGeneric(ent, data)
         end
     end)
-    
+
     return success
 end
 
 -- Add cleanup function
 function SWEP:CleanupWebSwing()
     if not IsValid(self.Owner) then return end
-    
+
     -- Stop web swing if active
     if self.RagdollActive then
         self:StopWebSwing()
     end
-    
+
     -- Ensure hooks are removed
     hook.Remove("CalcView", "SpiderManView")
     hook.Remove("Move", "WebSwing_NoclipSpeed_" .. self.Owner:EntIndex())
-    
+
     if SERVER then
         -- Restore original states if they exist
         if self.OriginalStates then
@@ -2867,7 +3041,7 @@ function SWEP:CleanupWebSwing()
             self.Owner:SetRenderMode(self.OriginalStates.renderMode)
             self.Owner:SetNoDraw(self.OriginalStates.noDraw)
             self.Owner:SetNWFloat("sv_noclipspeed", self.OriginalStates.noclipSpeed)
-            
+
             -- Clear stored states
             self.OriginalStates = nil
         else
@@ -2877,13 +3051,13 @@ function SWEP:CleanupWebSwing()
             self.Owner:SetRenderMode(RENDERMODE_NORMAL)
             self.Owner:SetNoDraw(false)
         end
-        
+
         -- Clean up any active ragdoll
         if IsValid(self.Ragdoll) then
             SafeRemoveEntity(self.Ragdoll)
         end
     end
-    
+
     if CLIENT then
         -- Restore viewmodel visibility
         self.Owner:DrawViewModel(true)
@@ -2899,30 +3073,30 @@ end
 -- Function to adjust ragdoll physics for optimal swing dynamics
 function SWEP:AdjustRagdollForSwing(ragdoll)
     if not IsValid(ragdoll) then return end
-    
+
     -- Set appropriate damping and drag for web-swinging
     for i = 0, ragdoll:GetPhysicsObjectCount() - 1 do
         local physObj = ragdoll:GetPhysicsObjectNum(i)
         if IsValid(physObj) then
             -- Set linear and angular damping for more controlled swinging
             physObj:SetDamping(0.2, 0.8)
-            
+
             -- Adjust drag based on model size and mass
             local modelScale = 1
             if IsValid(self.Owner) then
                 modelScale = self.Owner:GetModelScale()
             end
-            
+
             -- Scale mass by model scale to maintain appropriate physics
             local mass = self.STANDARD_RAGDOLL_MASS * math.max(0.8, modelScale)
             physObj:SetMass(mass)
-            
+
             -- Enable motion and wake the physics object
             physObj:EnableMotion(true)
             physObj:Wake()
         end
     end
-    
+
     -- Apply initial rotation to align ragdoll with player's view
     if IsValid(self.Owner) then
         local viewAngles = self.Owner:EyeAngles()
@@ -2936,14 +3110,14 @@ end
 -- Function to find a safe position for the player
 function SWEP:FindSafePosition(pos)
     if not pos then return pos end
-    
+
     local ply = self.Owner
     if not IsValid(ply) then return pos end
-    
+
     -- Define player hull dimensions
     local mins = Vector(-16, -16, 0)
     local maxs = Vector(16, 16, 72)
-    
+
     -- Check if the original position is safe
     local tr = util.TraceHull({
         start = pos,
@@ -2953,12 +3127,12 @@ function SWEP:FindSafePosition(pos)
         filter = ply,
         mask = MASK_SOLID
     })
-    
+
     -- If position is already safe, return it
     if not tr.Hit then
         return pos
     end
-    
+
     -- Try positions in a spiral pattern, moving outward and upward
     local attempts = {}
     for i = 0, 360, 45 do
@@ -2974,11 +3148,11 @@ function SWEP:FindSafePosition(pos)
             end
         end
     end
-    
+
     -- Try each position
     for _, offset in ipairs(attempts) do
         local testPos = pos + offset
-        
+
         local tr = util.TraceHull({
             start = testPos,
             endpos = testPos,
@@ -2987,12 +3161,12 @@ function SWEP:FindSafePosition(pos)
             filter = ply,
             mask = MASK_SOLID
         })
-        
+
         if not tr.Hit then
             return testPos
         end
     end
-    
+
     -- If no safe position found, move up and away from walls
     local upTrace = util.TraceLine({
         start = pos,
@@ -3000,7 +3174,7 @@ function SWEP:FindSafePosition(pos)
         filter = ply,
         mask = MASK_SOLID
     })
-    
+
     if upTrace.Hit then
         return pos + Vector(0, 0, upTrace.HitPos.z - pos.z - 10)
     else
@@ -3014,27 +3188,27 @@ hook.Add("InitPostEntity", "WebSwing_SetupMomentumTracking", function()
     if SWEP and SWEP.StartWebSwing then
         -- Store the original function
         local originalStartWebSwing = SWEP.StartWebSwing
-        
+
         -- Override with our new function that records momentum
         SWEP.StartWebSwing = function(self, tr)
             -- Call the original function first
             originalStartWebSwing(self, tr)
-            
+
             -- If tr is valid, record swing information
             if tr and tr.Hit and IsValid(self.Owner) then
                 local ply = self.Owner
                 local vel = ply:GetVelocity()
                 local speed = vel:Length()
                 local hitPos = tr.HitPos
-                
+
                 -- Calculate swing quality (0-1)
                 local swingQuality = 0.5 -- Default moderate quality
-                
+
                 if speed > 200 then
                     local toTarget = (hitPos - ply:EyePos()):GetNormalized()
                     local alignment = vel:GetNormalized():Dot(toTarget)
                     local heightDiff = hitPos.z - ply:EyePos().z
-                    
+
                     -- Calculate a combined quality score
                     swingQuality = math.Clamp(
                         0.5 +  -- Base value
@@ -3044,12 +3218,12 @@ hook.Add("InitPostEntity", "WebSwing_SetupMomentumTracking", function()
                         0, 1
                     )
                 end
-                
+
                 -- Record the swing event
                 SwingTargeting:RecordSwingEvent(swingQuality, hitPos, vel)
-                
+
                 if GetConVar("developer"):GetBool() then
-                    print(string.format("[WebSwing] Recorded swing, quality: %.2f, speed: %.1f", 
+                    print(string.format("[WebSwing] Recorded swing, quality: %.2f, speed: %.1f",
                           swingQuality, speed))
                 end
             end
@@ -3061,7 +3235,7 @@ end)
 hook.Add("PostSimulatePhysics", "WebSwing_PostPhysics", function()
     local ply = LocalPlayer and LocalPlayer() or nil
     if not IsValid(ply) then return end
-    
+
     local weapon = ply:GetActiveWeapon()
     if IsValid(weapon) and weapon:GetClass() == "webswing" and weapon.RagdollActive then
         -- Call the post-process hook
@@ -3071,21 +3245,16 @@ end)
 
 -- Add OnRemove function to clean up hooks and global references
 function SWEP:OnRemove()
-    -- Clean up flow state hook and global reference
+    -- Clean up hooks
     if CLIENT then
         hook.Remove("RenderScreenspaceEffects", "FlowState_ScreenEffects")
-        
-        -- Only clear the global if it belongs to this weapon
-        if _G.ActiveFlowSystem == self.FlowStateSystem then
-            _G.ActiveFlowSystem = nil
-        end
     end
-    
+
     -- Call original OnRemove if it exists
     if self.BaseClass.OnRemove then
         self.BaseClass.OnRemove(self)
     end
-    
+
     if self.ConstraintController then
         -- Make sure constraint and rope are valid before removing
         if IsValid(self.ConstraintController.constraint) then
@@ -3097,23 +3266,23 @@ function SWEP:OnRemove()
         -- Clear the controller after removing the constraint
         self.ConstraintController = nil
     end
-    
+
     -- Clear any remaining rope dynamics state
     if RopeDynamics then
         RopeDynamics.PrevVelocity = nil
         RopeDynamics.LastLengthChange = nil
         RopeDynamics.LastCornerTime = nil
     end
-    
+
     -- Clear the ragdoll
     if IsValid(self.Ragdoll) then
         self.Ragdoll:Remove()
         self.Ragdoll = nil
     end
-    
+
     self.RagdollActive = false
     self:ResetAllSettings()
-    
+
     -- Make sure we're properly cleaning up hooks
     hook.Remove("PostSwingPhysics", "PendulumPhysics_PostProcess")
 end
@@ -3130,21 +3299,14 @@ function SWEP:ResetAllSettings()
 	self.CameraVars = nil
 	self.ConstraintController = nil
 	self.OriginalStates = nil
-	
-	-- Reset rhythm system if it exists
-	if self.RhythmScore then
-		self.RhythmScore = 0
-		self.IsInRhythm = false
-		self.SwingPhase = 0
-		self.OptimalReleasePoint = 0
-		self.NextPredictedSwingTime = 0
-		self.ConsistencyScore = 0
-		self.LastSwingWasPerfect = false
-		self.LastSwingTime = 0
-	end
-	
+
 	-- Reset any active effects
 	if hook.GetTable()["PostSwingPhysics"] and hook.GetTable()["PostSwingPhysics"]["PendulumPhysics_PostProcess"] then
 		hook.Remove("PostSwingPhysics", "PendulumPhysics_PostProcess")
+	end
+
+	-- Reset momentum conversion system
+	if self.MomentumConversion then
+		self.MomentumConversion:ResetState()
 	end
 end

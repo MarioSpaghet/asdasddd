@@ -7,14 +7,10 @@ AddCSLuaFile("map_analysis.lua")
 AddCSLuaFile("saved_weapons.lua")
 AddCSLuaFile("rope_dynamics.lua")
 AddCSLuaFile("physics_system.lua")
-AddCSLuaFile("rhythm_system.lua")
-AddCSLuaFile("rhythm_hud.lua")
 AddCSLuaFile("swing_targeting.lua")
 AddCSLuaFile("adaptive_tension.lua")
 AddCSLuaFile("pendulum_physics.lua")
 AddCSLuaFile("web_release_dynamics.lua")
-AddCSLuaFile("flow_state_system.lua")
-AddCSLuaFile("flow_state_hud.lua")
 
 include("shared.lua")
 
@@ -59,17 +55,17 @@ end
 function SWEP:PrimaryAttack()
     local owner = self:GetOwner()
     if not IsValid(owner) then return end
-    
+
     local trace = owner:GetEyeTrace()
     if not trace.Hit or trace.HitSky then return end
-    
+
     local maxWebLength = GetConVar("webswing_max_length"):GetFloat()
     local targetPos = trace.HitPos
     local distance = (targetPos - owner:GetPos()):Length()
-    
+
     if distance > maxWebLength then
         targetPos = owner:GetPos() + (targetPos - owner:GetPos()):GetNormalized() * maxWebLength
     end
-    
+
     -- Additional swing logic here...
 end

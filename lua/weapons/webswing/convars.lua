@@ -28,15 +28,15 @@ if SERVER then
 	-- Sky web attachment ConVars
 	CreateConVar("webswing_allow_sky_attach", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Allow attaching webs to the sky", 0, 1)
 	CreateConVar("webswing_sky_height", "1000", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Height for sky web attachment points", 300, 3000)
-	
-	-- Advanced Momentum System ConVars
-	CreateConVar("webswing_momentum_building", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable momentum building from consecutive perfect swings", 0, 1)
-	CreateConVar("webswing_momentum_boost_per_swing", "0.15", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed boost percentage per consecutive perfect swing (0-0.5)", 0, 0.5)
-	CreateConVar("webswing_momentum_max_swings", "5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum consecutive perfect swings to count (1-10)", 1, 10)
+
+	-- Advanced Momentum System ConVars (perfect swing functionality disabled)
+	CreateConVar("webswing_momentum_building", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable momentum building from consecutive perfect swings", 0, 1)
+	CreateConVar("webswing_momentum_boost_per_swing", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed boost percentage per consecutive perfect swing (0-0.5)", 0, 0.5)
+	CreateConVar("webswing_momentum_max_swings", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum consecutive perfect swings to count (1-10)", 1, 10)
 	CreateConVar("webswing_momentum_decay_rate", "0.5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How quickly momentum decays when not swinging (0-2)", 0, 2)
 	CreateConVar("webswing_dive_boost_factor", "1.5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed multiplier during dive boost (1-3)", 1, 3)
 	CreateConVar("webswing_dive_duration", "0.75", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Duration of dive boost in seconds (0.1-2)", 0.1, 2)
-	
+
 	-- AI Swing Point Intelligence ConVars
 	CreateConVar("webswing_ai_predictive_targeting", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable predictive swing point selection", 0, 1)
 	CreateConVar("webswing_ai_prediction_strength", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Strength of predictive targeting (0-2)", 0, 2)
@@ -46,9 +46,7 @@ if SERVER then
 	CreateConVar("webswing_ai_momentum_factor", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Strength of momentum-aware targeting (0-2)", 0, 2)
 	CreateConVar("webswing_ai_curved_paths", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable curved path planning around buildings", 0, 1)
 	CreateConVar("webswing_ai_curve_strength", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Strength of curved path influence (0-2)", 0, 2)
-	CreateConVar("webswing_ai_flow_threshold", "500", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed threshold for entering flow state (100-1000)", 100, 1000)
-	CreateConVar("webswing_ai_flow_duration", "5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How long flow state lasts in seconds (1-10)", 1, 10)
-	
+
 	-- Adaptive Tension System ConVars
 	CreateConVar("webswing_adaptive_tension", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable adaptive web tension", 0, 1)
 	CreateConVar("webswing_tension_response", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How quickly web tension responds to inputs (0.1-3.0)", 0.1, 3.0)
@@ -56,7 +54,7 @@ if SERVER then
 	CreateConVar("webswing_tension_feedback", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable audio/haptic feedback for tension changes", 0, 1)
 	CreateConVar("webswing_tension_min_mult", "0.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Minimum tension multiplier (tighter web) (0.3-1.0)", 0.3, 1.0)
 	CreateConVar("webswing_tension_max_mult", "1.8", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum tension multiplier (looser web) (1.0-3.0)", 1.0, 3.0)
-	
+
 	-- Pendulum Physics Enhancement ConVars
 	CreateConVar("webswing_pendulum_arc_emphasis", "1.2", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much to emphasize pendulum arcs (0.5-2.0)", 0.5, 2.0)
 	CreateConVar("webswing_pendulum_frequency", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Natural oscillation frequency (0.7-1.3)", 0.7, 1.3)
@@ -67,15 +65,45 @@ if SERVER then
 	CreateConVar("webswing_pendulum_body_rotation", "1.2", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Body rotation during swings (1.0-2.0)", 1.0, 2.0)
 	CreateConVar("webswing_pendulum_exit_boost", "1.15", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed boost when exiting at optimal angle (1.0-1.5)", 1.0, 1.5)
 	CreateConVar("webswing_pendulum_bobble_reduction", "0.7", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Reduction of side-to-side bobble (0.3-1.0)", 0.3, 1.0)
-	
-	-- Web Release Dynamics ConVars
+
+	-- Web Release Dynamics ConVars (perfect release functionality disabled)
 	CreateConVar("webswing_release_momentum", "1.25", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Momentum conservation on web release (1.0-1.5)", 1.0, 1.5)
 	CreateConVar("webswing_release_direction", "0.35", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Directional influence on web release (0.0-1.0)", 0.0, 1.0)
-	CreateConVar("webswing_optimal_release", "1.3", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed boost for perfect timing (1.0-1.5)", 1.0, 1.5)
-	CreateConVar("webswing_chain_bonus", "1.15", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Chain bonus for consecutive well-timed releases (1.0-1.3)", 1.0, 1.3)
+	CreateConVar("webswing_optimal_release", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed boost for perfect timing (1.0-1.5)", 1.0, 1.5)
+	CreateConVar("webswing_chain_bonus", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Chain bonus for consecutive well-timed releases (1.0-1.3)", 1.0, 1.3)
 	CreateConVar("webswing_midair_correction", "0.3", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Mid-air correction strength after release (0.0-0.5)", 0.0, 0.5)
-	CreateConVar("webswing_slowmo_enabled", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable brief slow motion on perfect releases", 0, 1)
+	CreateConVar("webswing_slowmo_enabled", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable brief slow motion on perfect releases", 0, 1)
+
+	-- Momentum Conversion System ConVars
+	CreateConVar("webswing_momentum_conversion", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable momentum conversion system", 0, 1)
+	CreateConVar("webswing_conversion_efficiency", "0.7", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Efficiency of momentum conversion (0.0-1.0)", 0, 1)
+	CreateConVar("webswing_min_conversion_speed", "300", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Minimum speed for momentum conversion", 100, 500)
+	CreateConVar("webswing_conversion_boost", "1.3", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Boost multiplier for perfect conversion timing", 1.0, 2.0)
+	CreateConVar("webswing_conversion_direction", "0.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Directional influence on momentum conversion", 0.0, 1.0)
+
+	-- Web of Shadows Physics System ConVars
+	CreateConVar("webswing_use_wos_physics", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Use Web of Shadows style physics (recommended)", 0, 1)
+	CreateConVar("webswing_wos_gravity", "650", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Base gravity value for Web of Shadows physics", 500, 800)
+	CreateConVar("webswing_wos_momentum", "1.4", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Momentum preservation factor for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_arc_emphasis", "1.5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Arc emphasis factor for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_fall_boost", "1.8", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Fall-to-swing boost factor for Web of Shadows physics", 1.0, 2.5)
+	CreateConVar("webswing_wos_swing_accel", "1.35", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Swing acceleration for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_apex_float", "0.25", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Apex float time for Web of Shadows physics", 0.1, 0.5)
+	CreateConVar("webswing_wos_dive_accel", "1.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Dive acceleration for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_max_dive_speed", "1200", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum dive speed for Web of Shadows physics", 800, 1500)
+	CreateConVar("webswing_wos_centripetal", "1.4", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Centripetal force emphasis for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_tangential", "1.3", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Tangential force emphasis for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_inertia_comp", "0.7", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Inertia compensation for Web of Shadows physics", 0.5, 1.0)
+	CreateConVar("webswing_wos_perfect_timing", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Perfect timing boost for Web of Shadows physics (disabled)", 1.0, 2.0)
+	
+	-- Web of Shadows Targeting System ConVars
+	CreateConVar("webswing_wos_targeting", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enables Web of Shadows style targeting", 0, 1)
+	CreateConVar("webswing_wos_targeting_intelligence", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enables intelligent mode for WoS targeting", 0, 1)
+	CreateConVar("webswing_wos_height_adjustment", "200", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Base height adjustment for WoS targeting", 0, 500)
+	CreateConVar("webswing_wos_anticipation", "0.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much to anticipate player's next move (0-1)", 0, 1)
+	CreateConVar("webswing_show_ai_indicator", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Shows debug indicators for AI targeting decisions", 0, 1)
+	CreateConVar("webswing_obstacle_debug", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Shows obstacle prediction debug information", 0, 1)
 else
 	-- Client-side ConVars (if required)
 	-- Currently, no client specific convars; add here if needed
-end 
+end
