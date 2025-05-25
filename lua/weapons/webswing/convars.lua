@@ -83,26 +83,53 @@ if SERVER then
 
 	-- Web of Shadows Physics System ConVars
 	CreateConVar("webswing_use_wos_physics", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Use Web of Shadows style physics (recommended)", 0, 1)
-	CreateConVar("webswing_wos_gravity", "650", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Base gravity value for Web of Shadows physics", 500, 800)
-	CreateConVar("webswing_wos_momentum", "1.4", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Momentum preservation factor for Web of Shadows physics", 1.0, 2.0)
-	CreateConVar("webswing_wos_arc_emphasis", "1.5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Arc emphasis factor for Web of Shadows physics", 1.0, 2.0)
-	CreateConVar("webswing_wos_fall_boost", "1.8", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Fall-to-swing boost factor for Web of Shadows physics", 1.0, 2.5)
-	CreateConVar("webswing_wos_swing_accel", "1.35", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Swing acceleration for Web of Shadows physics", 1.0, 2.0)
-	CreateConVar("webswing_wos_apex_float", "0.25", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Apex float time for Web of Shadows physics", 0.1, 0.5)
-	CreateConVar("webswing_wos_dive_accel", "1.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Dive acceleration for Web of Shadows physics", 1.0, 2.0)
-	CreateConVar("webswing_wos_max_dive_speed", "1200", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum dive speed for Web of Shadows physics", 800, 1500)
-	CreateConVar("webswing_wos_centripetal", "1.4", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Centripetal force emphasis for Web of Shadows physics", 1.0, 2.0)
-	CreateConVar("webswing_wos_tangential", "1.3", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Tangential force emphasis for Web of Shadows physics", 1.0, 2.0)
-	CreateConVar("webswing_wos_inertia_comp", "0.7", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Inertia compensation for Web of Shadows physics", 0.5, 1.0)
+	CreateConVar("webswing_wos_gravity", "620", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Base gravity value for Web of Shadows physics", 500, 800)
+	CreateConVar("webswing_wos_momentum", "1.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Momentum preservation factor for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_arc_emphasis", "1.7", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Arc emphasis factor for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_fall_boost", "2.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Fall-to-swing boost factor for Web of Shadows physics", 1.0, 2.5)
+	CreateConVar("webswing_wos_swing_accel", "1.5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Swing acceleration for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_apex_float", "0.3", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Apex float time for Web of Shadows physics", 0.1, 0.5)
+	CreateConVar("webswing_wos_dive_accel", "1.8", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Dive acceleration for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_max_dive_speed", "1300", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum dive speed for Web of Shadows physics", 800, 1500)
+	CreateConVar("webswing_wos_centripetal", "1.5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Centripetal force emphasis for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_tangential", "1.4", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Tangential force emphasis for Web of Shadows physics", 1.0, 2.0)
+	CreateConVar("webswing_wos_inertia_comp", "0.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Inertia compensation for Web of Shadows physics", 0.5, 1.0)
 	CreateConVar("webswing_wos_perfect_timing", "1.0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Perfect timing boost for Web of Shadows physics (disabled)", 1.0, 2.0)
 	
 	-- Web of Shadows Targeting System ConVars
 	CreateConVar("webswing_wos_targeting", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enables Web of Shadows style targeting", 0, 1)
 	CreateConVar("webswing_wos_targeting_intelligence", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enables intelligent mode for WoS targeting", 0, 1)
 	CreateConVar("webswing_wos_height_adjustment", "200", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Base height adjustment for WoS targeting", 0, 500)
-	CreateConVar("webswing_wos_anticipation", "0.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much to anticipate player's next move (0-1)", 0, 1)
+	CreateConVar("webswing_wos_anticipation", "0.7", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much to anticipate player's next move (0-1)", 0, 1)
 	CreateConVar("webswing_show_ai_indicator", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Shows debug indicators for AI targeting decisions", 0, 1)
 	CreateConVar("webswing_obstacle_debug", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Shows obstacle prediction debug information", 0, 1)
+
+	-- Zip-to-Point ConVars
+	CreateConVar("webswing_zip_max_range", "2000", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum range for Zip-to-Point targeting.", 500, 5000)
+	CreateConVar("webswing_zip_input_mode", "1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Input mode for Zip-to-Point. 0: Disabled, 1: IN_WALK + IN_ATTACK2, 2: IN_ZOOM + IN_ATTACK2.", 0, 2)
+	CreateConVar("webswing_zip_speed", "2500", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed of the Zip-to-Point movement.", 1000, 5000)
+	CreateConVar("webswing_zip_max_duration", "1.5", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Maximum duration of a Zip-to-Point.", 0.5, 3.0)
+	CreateConVar("webswing_zip_arrival_behavior", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Behavior on arrival at zip point. 0: Simple Stop, 1: Launch if Jump held.", 0, 1)
+
+	-- Air Control ConVars
+	CreateConVar("webswing_air_strafe_force", "75", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Force applied for lateral air control during swings.", 0, 200)
+	CreateConVar("webswing_air_influence_force", "50", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Force applied for forward/backward air influence during swings.", 0, 150)
+	CreateConVar("webswing_rope_adjust_speed", "60", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Speed at which the web is shortened or slackened by player input.", 10, 200)
+
+	-- Camera ConVars
+	CreateConVar("webswing_camera_zip_fov_boost", "10", FCVAR_ARCHIVE + FCVAR_REPLICATED, "FOV boost applied during Zip-to-Point.", 0, 25)
+
+	-- Glide Mechanic ConVars
+	CreateConVar("webswing_glide_enable", "0", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Enable simplified glide mechanic.", 0, 1)
+	CreateConVar("webswing_glide_gravity_scale", "0.3", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Gravity scale during glide (0.1 = less gravity, 1.0 = normal).", 0.1, 1.0)
+	CreateConVar("webswing_glide_forward_force", "150", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Forward force applied during glide.", 0, 500)
+	CreateConVar("webswing_glide_steer_force", "75", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Steering force during glide.", 0, 200)
+	CreateConVar("webswing_glide_min_start_speed", "200", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Minimum horizontal speed required to start gliding.", 0, 1000)
+	CreateConVar("webswing_glide_activation_key", "IN_SPEED", FCVAR_ARCHIVE, "Key to hold for gliding (e.g., IN_SPEED, IN_WALK, IN_JUMP). This is a string ConVar for the key name.")
+
+	-- Camera ConVars (Glide Specific)
+	CreateConVar("webswing_camera_glide_fov_boost", "8", FCVAR_ARCHIVE + FCVAR_REPLICATED, "FOV boost applied during gliding.", 0, 20)
+	CreateConVar("webswing_camera_glide_distance_mult", "1.1", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Camera distance multiplier during gliding.", 0.8, 1.5)
 else
 	-- Client-side ConVars (if required)
 	-- Currently, no client specific convars; add here if needed

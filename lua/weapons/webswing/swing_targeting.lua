@@ -1513,4 +1513,34 @@ function SwingTargeting:UpdateWoSTargeting(owner, frameTime)
     end
 end
 
+-- Find a direct line-of-sight point for the Zip-to-Point mechanic
+function SwingTargeting:FindZipTargetPoint(owner, eyePos, aimVector)
+    if not IsValid(owner) then return nil end
+
+    local maxRange = 2000 -- Default value
+    if ConVarExists("webswing_zip_max_range") then
+        maxRange = GetConVar("webswing_zip_max_range"):GetFloat()
+    end
+
+    local traceData = {
+        start = eyePos,
+        endpos = eyePos + aimVector * maxRange,
+        filter = owner,
+        mask = MASK_SOLID
+    }
+
+    local tr = util.TraceLine(traceData)
+
+    if tr.Hit and not tr.HitSky then
+        return {
+            pos = tr.HitPos,
+            normal = tr.HitNormal,
+            entity = tr.Entity or game.GetWorld(),
+            type = "zip_point"
+        }
+    end
+
+    return nil
+end
+
 return SwingTargeting

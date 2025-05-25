@@ -381,6 +381,41 @@ function WebOfShadowsPhysics:EnhancePhysics(ragdoll, owner, constraintController
     -- Apply the combined force
     physObj:ApplyForceCenter(totalForce)
 
+    -- Air Control Logic
+    local airStrafeForce = GetConVar("webswing_air_strafe_force"):GetFloat()
+    local airInfluenceForce = GetConVar("webswing_air_influence_force"):GetFloat()
+
+    -- Lateral (strafe) air control
+    local moveDir = Vector(0,0,0)
+    if owner:KeyDown(IN_MOVELEFT) then
+        moveDir = moveDir - owner:GetRight()
+    end
+    if owner:KeyDown(IN_MOVERIGHT) then
+        moveDir = moveDir + owner:GetRight()
+    end
+
+    if moveDir:LengthSqr() > 0 then
+        physObj:ApplyForceCenter(moveDir:GetNormalized() * airStrafeForce * physObj:GetMass() * frameTime * 60)
+    end
+
+    -- Forward/backward air influence
+    local influenceDir = Vector(0,0,0)
+    if owner:KeyDown(IN_FORWARD) then
+        influenceDir = influenceDir + owner:GetAimVector()
+    end
+    if owner:KeyDown(IN_BACK) then
+        influenceDir = influenceDir - owner:GetAimVector()
+    end
+
+    if influenceDir:LengthSqr() > 0 then
+        -- Project influenceDir onto the plane perpendicular to the current velocity to avoid direct speed manipulation
+        local currentVelDir = velocity:GetNormalized()
+        local projectedInfluenceDir = influenceDir - currentVelDir * influenceDir:Dot(currentVelDir)
+        if projectedInfluenceDir:LengthSqr() > 0.01 then -- Ensure there's some perpendicular component
+             physObj:ApplyForceCenter(projectedInfluenceDir:GetNormalized() * airInfluenceForce * physObj:GetMass() * frameTime * 60)
+        end
+    end
+
     return totalForce
 end
 

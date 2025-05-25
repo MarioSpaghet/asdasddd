@@ -11,6 +11,12 @@ AddCSLuaFile("swing_targeting.lua")
 AddCSLuaFile("adaptive_tension.lua")
 AddCSLuaFile("pendulum_physics.lua")
 AddCSLuaFile("web_release_dynamics.lua")
+AddCSLuaFile("web_of_shadows_physics.lua") -- This was missing in the previous read
+AddCSLuaFile("momentum_conversion.lua") -- This was missing
+AddCSLuaFile("obstacle_prediction.lua") -- This was missing
+AddCSLuaFile("autorun/client/cl_webswing.lua")
+AddCSLuaFile("effects/webshooter_beam_zip/init.lua")
+AddCSLuaFile("effects/webshooter_beam_swing/init.lua")
 
 include("shared.lua")
 

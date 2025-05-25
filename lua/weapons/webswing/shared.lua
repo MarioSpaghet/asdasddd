@@ -230,6 +230,15 @@ function SWEP:Initialize()
 	-- Initialize the Obstacle Prediction system
 	self.ObstaclePrediction = ObstaclePrediction
 
+	-- Initialize Zip-to-Point target
+	self.ZipTargetPoint = nil
+	self.IsZipping = false
+	self.ZipData = {}
+
+	-- Initialize Glide state
+	self.IsGliding = false
+	self.GlideData = {}
+
 	-- Run analysis on server: map analysis and environmental analysis (wind)
 	if SERVER then
 		self:AnalyzeMap()
@@ -247,6 +256,36 @@ function SWEP:Initialize()
 
 	self.BoneName = ""
 	self.LastTargetNameUpdate = -1
+end
+
+function SWEP:StartGlide()
+    if self.IsGliding or self.Owner:IsOnGround() then return end -- Already gliding or on ground
+
+    -- Check minimum speed
+    local currentSpeedHorizontal = self.Owner:GetVelocity():Length2D()
+    local minStartSpeed = GetConVar("webswing_glide_min_start_speed"):GetFloat()
+    if currentSpeedHorizontal < minStartSpeed then return end
+
+    self.IsGliding = true
+    self.GlideData.startTime = CurTime()
+    if SERVER then
+        self.GlideData.originalGravity = self.Owner:GetGravity() -- Store original gravity
+        self.Owner:SetGravity(GetConVar("webswing_glide_gravity_scale"):GetFloat()) -- Apply scaled gravity
+        self.Owner:SetMoveType(MOVETYPE_WALK) -- Ensure it's not NOCLIP from zipping. WALK allows some air control.
+    end
+    -- Play a sound for glide start
+    self.Owner:EmitSound("vehicles/airboat/fan_motor_start_fullthrottle.wav") -- Placeholder sound
+end
+
+function SWEP:StopGlide()
+    if not self.IsGliding then return end
+    self.IsGliding = false
+    if SERVER then
+        self.Owner:SetGravity(self.GlideData.originalGravity or 1.0) -- Restore original gravity
+    end
+    self.GlideData = {}
+    -- Play a sound for glide stop
+    self.Owner:EmitSound("vehicles/airboat/fan_motor_stop.wav") -- Placeholder sound
 end
 
 --	Reload changes our bone number
@@ -322,6 +361,36 @@ function SWEP:Think()
         SwingTargeting:UpdateWoSTargeting(self.Owner, FrameTime())
     end
 
+    -- Zip-to-Point targeting logic
+    if IsValid(self.Owner) and SwingTargeting then
+        local zipInputMode = GetConVar("webswing_zip_input_mode"):GetInt()
+        local isZipAiming = false
+
+        if zipInputMode == 1 then
+            -- IN_WALK + IN_ATTACK2 (holding IN_WALK, aiming with IN_ATTACK2)
+            if self.Owner:KeyDown(IN_WALK) and self.Owner:KeyDown(IN_ATTACK2) then
+                isZipAiming = true
+            end
+        elseif zipInputMode == 2 then
+            -- IN_ZOOM + IN_ATTACK2 (holding IN_ZOOM, aiming with IN_ATTACK2)
+            if self.Owner:KeyDown(IN_ZOOM) and self.Owner:KeyDown(IN_ATTACK2) then
+                isZipAiming = true
+            end
+        end
+
+        if isZipAiming then
+            self.ZipTargetPoint = SwingTargeting:FindZipTargetPoint(self.Owner, self.Owner:EyePos(), self.Owner:GetAimVector())
+        else
+            self.ZipTargetPoint = nil
+        end
+
+        if CLIENT and self.ZipTargetPoint and GetConVar("webswing_show_ai_indicator"):GetBool() then
+            debugoverlay.Sphere(self.ZipTargetPoint.pos, 5, 0.1, Color(0,255,255,255))
+        end
+    else
+        self.ZipTargetPoint = nil -- Ensure it's nil if owner or SwingTargeting is invalid
+    end
+
 -- Camera system is now imported from camera_system.lua
 
 	if CLIENT then
@@ -391,14 +460,14 @@ function SWEP:Think()
     end
 
     -- Process rope shortening/slackening
-    if IsValid(self.Owner) and self.Owner:KeyDown(IN_ATTACK2) and self.ConstraintController then
+    if IsValid(self.Owner) and self.Owner:KeyDown(IN_ATTACK2) and self.ConstraintController and not self.IsZipping then -- Don't allow rope control while zipping
         if not IsValid(self.ConstraintController.constraint) or not IsValid(self.ConstraintController.rope) then
             -- Recreate constraint if something went wrong
             self:CleanupWebSwing()
             return
         end
 
-        self.ConstraintController.speed = self:GetShortenSpeed()
+        self.ConstraintController.speed = GetConVar("webswing_rope_adjust_speed"):GetFloat()
 
         if self.Owner:KeyDown(IN_FORWARD) then
             self.ConstraintController:Shorten()
@@ -406,6 +475,127 @@ function SWEP:Think()
             self.ConstraintController:Slacken()
         end
     end
+
+    -- Zip Movement Logic
+    if self.IsZipping then
+        if not IsValid(self.Owner) or not self.ZipData or not self.ZipData.targetPos then
+            self:FinishZipToPoint(true) -- Cancel if data is missing
+            return
+        end
+
+        if SERVER then
+            local zipSpeed = GetConVar("webswing_zip_speed"):GetFloat()
+            local maxDuration = GetConVar("webswing_zip_max_duration"):GetFloat()
+            
+            local direction = (self.ZipData.targetPos - self.Owner:GetPos()):GetNormalized()
+            self.Owner:SetLocalVelocity(direction * zipSpeed)
+            
+            -- Optional: Orient player (might be too jerky, consider lerping later)
+            -- self.Owner:SetEyeAngles(direction:Angle()) 
+
+            if self.Owner:GetPos():Distance(self.ZipData.targetPos) < 48 then
+                self:FinishZipToPoint(false)
+                return
+            end
+
+            if CurTime() - self.ZipData.startTime > maxDuration then
+                self:FinishZipToPoint(false) -- false = not cancelled by input
+                return
+            end
+        end
+
+        -- Input check for cancellation (client and server for responsiveness)
+        -- KeyPressed might be problematic in Think if not handled carefully, consider KeyDown for continuous check or specific input handling for cancellation.
+        -- For now, using KeyDown as a simpler check.
+        if self.Owner:KeyDown(IN_ATTACK2) or self.Owner:KeyDown(IN_JUMP) then
+             -- Debounce or add a slight delay if KeyDown causes instant cancel.
+             -- For this iteration, we'll assume KeyDown is fine for a quick cancel.
+            if CurTime() - self.ZipData.startTime > 0.1 then -- Prevent instant cancel on the same frame as start
+                self:FinishZipToPoint(true) 
+                return
+            end
+        end
+    end
+
+    -- Glide Mechanic Logic
+    if IsValid(self.Owner) and not self.RagdollActive and not self.IsZipping then -- Glide cannot be active during swing or zip
+        local glideKeyName = GetConVar("webswing_glide_activation_key"):GetString()
+        local glideKey = nil -- Default to nil, will be set if a valid key name is found
+        
+        -- Mapping key names to IN_ enums
+        -- This is a basic mapping, a more robust solution might use a table lookup
+        if string.upper(glideKeyName) == "IN_SPEED" then glideKey = IN_SPEED 
+        elseif string.upper(glideKeyName) == "IN_WALK" then glideKey = IN_WALK 
+        elseif string.upper(glideKeyName) == "IN_JUMP" then glideKey = IN_JUMP 
+        -- Add other IN_ enums as needed, e.g. IN_DUCK for IN_DUCK
+        elseif string.upper(glideKeyName) == "IN_DUCK" then glideKey = IN_DUCK
+        end
+
+
+        if GetConVar("webswing_glide_enable"):GetBool() and glideKey and self.Owner:KeyDown(glideKey) and not self.IsGliding then
+            self:StartGlide()
+        elseif self.IsGliding and (not glideKey or not self.Owner:KeyDown(glideKey) or self.Owner:IsOnGround()) then
+            self:StopGlide()
+        end
+
+        if self.IsGliding then
+            if SERVER then -- Physics calculations on server
+                local forwardForce = GetConVar("webswing_glide_forward_force"):GetFloat()
+                local steerForce = GetConVar("webswing_glide_steer_force"):GetFloat()
+                local aimVector = self.Owner:GetAimVector()
+                local currentVel = self.Owner:GetVelocity()
+
+                -- Apply forward force (maintain some vertical velocity)
+                local glideVel = aimVector * forwardForce
+                -- Preserve Z, but allow gravity to act. The actual velocity change will be a combination.
+                -- We're applying a force, not setting velocity directly to this value, so physics engine handles combination.
+                self.Owner:SetLocalVelocity(Vector(glideVel.x, glideVel.y, currentVel.z)) 
+
+
+                -- Steering
+                local steerDir = Vector(0,0,0)
+                if self.Owner:KeyDown(IN_MOVELEFT) then steerDir = steerDir - self.Owner:GetRight() end
+                if self.Owner:KeyDown(IN_MOVERIGHT) then steerDir = steerDir + self.Owner:GetRight() end
+                
+                if steerDir:LengthSqr() > 0 then
+                    -- Apply steering force. Multiply by FrameTime and 60 for frame-rate independence (approx)
+                    local effectiveSteerForce = steerDir:GetNormalized() * steerForce * FrameTime() * 60 
+                    self.Owner:SetLocalVelocity(self.Owner:GetVelocity() + effectiveSteerForce)
+                end
+                
+                -- Prevent player from looking too far up or down during glide to stabilize
+                local ang = self.Owner:GetEyeAngles()
+                ang.p = math.Clamp(ang.p, -30, 30) 
+                self.Owner:SetEyeAngles(ang)
+            end
+        end
+    elseif self.IsGliding then -- If ragdoll/zipping became active, stop gliding
+        self:StopGlide()
+    end
+end
+
+function SWEP:FinishZipToPoint(wasCancelled)
+    if not self.IsZipping then return end
+    self.IsZipping = false
+
+    if SERVER then
+        self.Owner:SetMoveType(self.ZipData.originalMoveType or MOVETYPE_WALK)
+        local arrivalBehavior = GetConVar("webswing_zip_arrival_behavior"):GetInt()
+
+        if not wasCancelled and arrivalBehavior == 1 and self.Owner:KeyDown(IN_JUMP) then
+            local launchDir = self.ZipData.targetNormal * GetConVar("webswing_zip_speed"):GetFloat() * 0.5 + Vector(0,0,200)
+            self.Owner:SetLocalVelocity(launchDir)
+        elseif not wasCancelled then
+            self.Owner:SetLocalVelocity(self.ZipData.targetNormal * 50) -- Slight push off surface
+        else -- wasCancelled
+            self.Owner:SetLocalVelocity(self.Owner:GetVelocity() * 0.5) -- Dampen current velocity
+        end
+    end
+    
+    -- Play a sound for ending the zip
+    self.Owner:EmitSound("buttons/button17.wav")
+
+    self.ZipData = {}
 end
 
 -- Use the physics system's CalcElasticConstant function
@@ -424,6 +614,33 @@ function SWEP:PrimaryAttack()
     -- Do nothing
 end
 
+function SWEP:StartZipToPoint(targetData)
+    if not IsValid(self.Owner) then return end
+
+    -- If already zipping, do nothing
+    if self.IsZipping then return end
+
+    -- If a swing is active, stop it (basic version, can be expanded)
+    if self.RagdollActive then
+        self:StopWebSwing()
+    end
+
+    self.IsZipping = true
+    self.ZipData = {
+        targetPos = targetData.pos,
+        targetNormal = targetData.normal,
+        startTime = CurTime(),
+        originalMoveType = self.Owner:GetMoveType()
+    }
+
+    if SERVER then
+        self.Owner:SetMoveType(MOVETYPE_NOCLIP)
+    end
+    
+    -- Play a sound for starting the zip
+    self.Owner:EmitSound("weapons/physcannon/energy_sing_loopoff.wav") 
+end
+
 function SWEP:SecondaryAttack()
     if not IsFirstTimePredicted() then return end
 
@@ -433,6 +650,16 @@ function SWEP:SecondaryAttack()
     end
 
     if self.Owner:KeyPressed(IN_ATTACK2) then
+        -- Check for Zip-to-Point first
+        if self.ZipTargetPoint then
+            if CLIENT and _G.ClientWebEffects and self.ZipTargetPoint then
+                _G.ClientWebEffects.ShootPredictedWeb(self.Owner, self.Owner:GetShootPos(), self.ZipTargetPoint.pos, "zip")
+            end
+            self:StartZipToPoint(self.ZipTargetPoint)
+            self.NextSwingTime = CurTime() + 0.2 -- Shorter cooldown for zip attempt
+            return
+        end
+
         self.NextSwingTime = CurTime() + 0.5  -- Adjust cooldown as needed
 
         local tr
@@ -459,6 +686,9 @@ function SWEP:SecondaryAttack()
                 StartPos = self.Owner:EyePos(),
                 PhysicsBone = 0
             }
+            if CLIENT and _G.ClientWebEffects then
+                 _G.ClientWebEffects.ShootPredictedWeb(self.Owner, self.Owner:GetShootPos(), tr.HitPos, "swing")
+            end
         end
 
         if SERVER then

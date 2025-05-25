@@ -139,6 +139,24 @@ function CameraSystem.AnalyzePlayerContext(weapon, ply, pos)
         cv.lastContextState = context
     end
 
+    -- Additional check for zipping context (overrides other contexts if true)
+    if IsValid(weapon) and weapon.IsZipping == true then
+        if cv.lastContextState ~= "zipping" then -- Check if context is changing to zipping
+            cv.contextTransitionTime = CurTime()
+        end
+        context = "zipping"
+        cv.lastContextState = "zipping" -- Ensure lastContextState is updated
+    end
+
+    -- Additional check for gliding context (overrides other contexts if true, except zipping)
+    if context ~= "zipping" and IsValid(weapon) and weapon.IsGliding == true then
+        if cv.lastContextState ~= "gliding" then -- Check if context is changing to gliding
+            cv.contextTransitionTime = CurTime()
+        end
+        context = "gliding"
+        cv.lastContextState = "gliding" -- Ensure lastContextState is updated
+    end
+
     return context
 end
 
@@ -567,6 +585,64 @@ function CameraSystem.CalculateView(weapon, ply, pos, angles, fov)
 
     -- Detect dramatic moments for camera effects
     local dramaticMoment, momentType, momentMagnitude = CameraSystem.DetectDramaticMoments(weapon, ply)
+
+    local view = {} -- Initialize view table
+
+    -- Zipping context camera logic
+    if context == "zipping" then
+        local zipTargetPos = weapon.ZipData and weapon.ZipData.targetPos
+        if not zipTargetPos then -- Fallback to standard if ZipData is missing
+            cv.targetDistance = Lerp(FrameTime() * cv.smoothSpeed, cv.targetDistance, 150) -- default distance
+            cv.tiltAngle = Lerp(FrameTime() * cv.smoothSpeed, cv.tiltAngle, 0) -- no roll
+            cv.contextualFOV = Lerp(FrameTime() * cv.smoothSpeed, cv.contextualFOV, cv.baseFOV)
+            -- Standard view construction
+            local finalAngles = Angle(cv.currentAngles.p, cv.currentAngles.y, cv.tiltAngle)
+            view.origin = cv.lastPos - (finalAngles:Forward() * cv.targetDistance) + (finalAngles:Up() * (cv.verticalOffset or 5))
+            view.angles = finalAngles
+            view.fov = cv.contextualFOV
+            view.drawviewer = true
+            return view
+        end
+        -- Calculate direction to zip target
+        local dirToTarget = (zipTargetPos - (cv.lastPos or pos)):GetNormalized() -- Use cv.lastPos or current pos
+        local targetAngles = dirToTarget:Angle()
+        -- Smoothly LERP current camera angles towards the target view
+        cv.currentAngles = LerpAngle(FrameTime() * (cv.smoothSpeed * 1.5), cv.currentAngles, targetAngles) -- Faster LERP for zip
+        -- Set FOV with zip boost
+        local zipFOVBoost = GetConVar("webswing_camera_zip_fov_boost"):GetFloat()
+        cv.contextualFOV = Lerp(FrameTime() * cv.smoothSpeed, cv.contextualFOV, cv.baseFOV + zipFOVBoost)
+        -- Minimize camera roll
+        cv.tiltAngle = Lerp(FrameTime() * (cv.smoothSpeed * 2), cv.tiltAngle, 0) -- Quickly remove roll
+        -- Adjust camera distance
+        cv.targetDistance = Lerp(FrameTime() * cv.smoothSpeed, cv.targetDistance, 100) -- Closer distance for zip
+        -- Construct the view for zipping
+        local finalZipAngles = Angle(cv.currentAngles.p, cv.currentAngles.y, cv.tiltAngle)
+        view.origin = (cv.lastPos or pos) - (finalZipAngles:Forward() * cv.targetDistance) + (finalZipAngles:Up() * (cv.verticalOffset or 5))
+        view.angles = finalZipAngles
+        view.fov = cv.contextualFOV
+        view.drawviewer = true
+        return view -- IMPORTANT: Return here for zipping context
+    
+    elseif context == "gliding" then
+        -- Smoothly LERP current camera angles towards player's view angles but more stable
+        local stableAngles = Angle(ply:EyeAngles().p * 0.5, ply:EyeAngles().y, 0) -- Reduce pitch influence, zero roll initially
+        cv.currentAngles = LerpAngle(FrameTime() * (cv.smoothSpeed * 0.75), cv.currentAngles, stableAngles) -- Slower, more stable LERP
+        -- Set FOV with glide boost
+        local glideFOVBoost = GetConVar("webswing_camera_glide_fov_boost"):GetFloat()
+        cv.contextualFOV = Lerp(FrameTime() * cv.smoothSpeed, cv.contextualFOV, cv.baseFOV + glideFOVBoost)
+        -- Minimize camera roll, allow slight roll from player view
+        cv.tiltAngle = Lerp(FrameTime() * cv.smoothSpeed, cv.tiltAngle, ply:EyeAngles().r * 0.2) -- Minimal roll, slight influence from player's own roll
+        -- Adjust camera distance
+        local glideDistMult = GetConVar("webswing_camera_glide_distance_mult"):GetFloat()
+        cv.targetDistance = Lerp(FrameTime() * cv.smoothSpeed, cv.targetDistance, (cv.minDistance or 150) * glideDistMult) -- Use base/min distance * mult
+        -- Construct the view for gliding
+        local finalGlideAngles = Angle(cv.currentAngles.p, cv.currentAngles.y, cv.tiltAngle)
+        view.origin = (cv.lastPos or pos) - (finalGlideAngles:Forward() * cv.targetDistance) + (finalGlideAngles:Up() * (cv.verticalOffset or 5))
+        view.angles = finalGlideAngles
+        view.fov = cv.contextualFOV
+        view.drawviewer = true
+        return view -- IMPORTANT: Return here for gliding context
+    end
 
     -- Ensure all camera values have defaults
     cv.targetDistance = cv.targetDistance or 150
