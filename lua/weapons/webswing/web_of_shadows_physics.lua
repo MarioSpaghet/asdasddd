@@ -6,14 +6,14 @@ local WebOfShadowsPhysics = {}
 -- Configuration based on Web of Shadows feel
 WebOfShadowsPhysics.Config = {
     -- Core swing physics
-    BaseGravity = 650,                -- Base gravity value (vanilla = 600)
-    SwingGravityReduction = 0.65,     -- Gravity reduction during swings (lower = more floaty)
+    BaseGravity = 700,                -- Base gravity value (vanilla = 600)
+    SwingGravityReduction = 0.6,     -- Gravity reduction during swings (lower = more floaty)
     MomentumPreservation = 1.4,       -- How well momentum is preserved (higher = better preservation)
 
     -- Arc and pendulum enhancements
-    ArcEmphasisFactor = 1.5,          -- How pronounced the swing arcs are (higher = more dramatic)
-    SwingAcceleration = 1.35,         -- How quickly speed builds during swings
-    ApexFloatTime = 0.25,             -- How long to "float" at the apex of swings
+    ArcEmphasisFactor = 1.35,          -- How pronounced the swing arcs are (higher = more dramatic)
+    SwingAcceleration = 1.45,         -- How quickly speed builds during swings
+    ApexFloatTime = 0.3,             -- How long to "float" at the apex of swings
 
     -- Web of Shadows specific mechanics
     FallToSwingBoost = 1.8,           -- Speed boost when transitioning from fall to swing
@@ -21,14 +21,14 @@ WebOfShadowsPhysics.Config = {
     VerticalBoostFactor = 1.4,        -- Enhanced vertical movement for higher arcs
 
     -- Dive mechanics
-    DiveAcceleration = 1.6,           -- How quickly speed builds during dives
+    DiveAcceleration = 1.7,           -- How quickly speed builds during dives
     DiveRecoveryBoost = 1.5,          -- Boost when recovering from a dive into a swing
-    MaxDiveSpeed = 1200,              -- Maximum speed during a dive
+    MaxDiveSpeed = 1300,              -- Maximum speed during a dive
 
     -- Advanced physics tuning
-    CentripetalForceEmphasis = 1.4,   -- Emphasis on circular motion (higher = tighter turns)
+    CentripetalForceEmphasis = 1.5,   -- Emphasis on circular motion (higher = tighter turns)
     TangentialForceEmphasis = 1.3,    -- Emphasis on forward motion in swings
-    InertiaCompensation = 0.7,        -- Compensation for inertia (lower = more responsive)
+    InertiaCompensation = 0.65,        -- Compensation for inertia (lower = more responsive)
 
     -- Transition smoothing
     SwingToSwingSmoothing = 0.8,      -- Smoothing when transitioning between swings
@@ -99,19 +99,19 @@ end
 function WebOfShadowsPhysics:LoadConVarSettings()
     -- Create ConVars if they don't exist
     if not ConVarExists("webswing_wos_gravity") then
-        CreateConVar("webswing_wos_gravity", tostring(self.Config.BaseGravity), FCVAR_ARCHIVE + FCVAR_REPLICATED, "Base gravity value for Web of Shadows physics", 500, 800)
+        CreateConVar("webswing_wos_gravity", "700", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Base gravity value for Web of Shadows physics", 500, 800)
     end
 
     if not ConVarExists("webswing_wos_momentum") then
-        CreateConVar("webswing_wos_momentum", tostring(self.Config.MomentumPreservation), FCVAR_ARCHIVE + FCVAR_REPLICATED, "Momentum preservation factor for Web of Shadows physics", 1.0, 2.0)
+        CreateConVar("webswing_wos_momentum", "1.4", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Momentum preservation factor for Web of Shadows physics", 1.0, 2.0)
     end
 
     if not ConVarExists("webswing_wos_arc_emphasis") then
-        CreateConVar("webswing_wos_arc_emphasis", tostring(self.Config.ArcEmphasisFactor), FCVAR_ARCHIVE + FCVAR_REPLICATED, "Arc emphasis factor for Web of Shadows physics", 1.0, 2.0)
+        CreateConVar("webswing_wos_arc_emphasis", "1.35", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Arc emphasis factor for Web of Shadows physics", 1.0, 2.0)
     end
 
     if not ConVarExists("webswing_wos_fall_boost") then
-        CreateConVar("webswing_wos_fall_boost", tostring(self.Config.FallToSwingBoost), FCVAR_ARCHIVE + FCVAR_REPLICATED, "Fall-to-swing boost factor for Web of Shadows physics", 1.0, 2.5)
+        CreateConVar("webswing_wos_fall_boost", "1.8", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Fall-to-swing boost factor for Web of Shadows physics", 1.0, 2.5)
     end
 
     -- Load values from ConVars
@@ -384,76 +384,110 @@ function WebOfShadowsPhysics:EnhancePhysics(ragdoll, owner, constraintController
     return totalForce
 end
 
--- Handle web release with Web of Shadows style
 function WebOfShadowsPhysics:EnhanceWebRelease(player, releaseVelocity, swingPhase)
     if not IsValid(player) then return releaseVelocity end
 
-    -- Store original velocity
     local originalVel = releaseVelocity:Clone()
-    local speed = originalVel:Length()
-
-    -- Calculate release quality based on phase
-    local releaseQuality = 0
-
-    -- Web of Shadows optimal release points are at ~0.3 and ~0.7 phase
-    local earlyOptimal = math.abs(swingPhase - 0.3)
-    local lateOptimal = math.abs(swingPhase - 0.7)
-    local optimalDist = math.min(earlyOptimal, lateOptimal)
-
-    -- Score is inverse to distance from optimal (closer = higher)
-    releaseQuality = math.Clamp(1 - (optimalDist / 0.3), 0, 1)
-
-    -- Store release quality
-    self.State.LastReleaseQuality = releaseQuality
-    self.State.LastReleaseTime = CurTime()
-
-    -- Calculate direction adjustments based on player input
+    local currentSpeed = originalVel:Length()
     local eyeAngles = player:EyeAngles()
     local lookDir = eyeAngles:Forward()
+    local finalVel = originalVel
 
-    -- Determine release type based on player input and look direction
-    local releaseType = "standard"
-    local speedMultiplier = 1.0
+    -- Calculate releaseQuality (Web of Shadows optimal phase is ~0.3 or ~0.7)
+    -- Closer to these phases means higher quality.
+    local earlyOptimalDist = math.abs(swingPhase - 0.3)
+    local lateOptimalDist = math.abs(swingPhase - 0.7)
+    local optimalPhaseDist = math.min(earlyOptimalDist, lateOptimalDist)
+    local releaseQuality = math.Clamp(1 - (optimalPhaseDist / 0.3), 0.1, 1.0) -- Ensure quality is at least 0.1
 
-    -- Check for boost release (Jump + Forward)
-    if player:KeyDown(IN_JUMP) and player:KeyDown(IN_FORWARD) and eyeAngles.pitch < 30 then
-        releaseType = "boost"
-        speedMultiplier = 1.3
+    self.State.LastReleaseQuality = releaseQuality
+    self.State.LastReleaseTime = CurTime()
+    self.State.ConsecutiveSwings = 0 -- Reset this as per existing logic
 
-        -- Enhanced forward component
-        local forwardBoost = lookDir * (speed * 0.2)
-        forwardBoost.z = math.max(forwardBoost.z, 0) -- Ensure we don't push downward
-        originalVel = originalVel + forwardBoost
+    local bIsJumping = player:KeyDown(IN_JUMP)
+    local bIsMovingForward = player:KeyDown(IN_FORWARD)
+    local bIsMovingBackward = player:KeyDown(IN_BACK)
+    -- local bIsMovingLeft = player:KeyDown(IN_MOVELEFT) -- For future side boosts if needed
+    -- local bIsMovingRight = player:KeyDown(IN_MOVERIGHT)
 
-    -- Check for dive release (Jump + Down look angle)
-    elseif player:KeyDown(IN_JUMP) and eyeAngles.pitch > 30 then
-        releaseType = "dive"
-        speedMultiplier = 1.2
+    if bIsJumping then
+        -- Active Jump Releases (more forceful)
+        local jumpSpeedMultiplier = 1.0
+        local addedBoost = Vector(0,0,0)
 
-        -- Enhanced downward component with forward momentum
-        local diveDir = lookDir
-        diveDir.z = math.min(diveDir.z, -0.3) -- Ensure downward component
-        originalVel = originalVel + diveDir * (speed * 0.25)
+        if bIsMovingForward and eyeAngles.pitch < 20 then -- Forward Jump Boost (more aggressive)
+            jumpSpeedMultiplier = 1.35 + (0.15 * releaseQuality) -- Max 1.5
+            local forwardImpulse = lookDir * (currentSpeed * (0.25 + (0.1 * releaseQuality))) -- Max speed * 0.35
+            forwardImpulse.z = math.max(forwardImpulse.z, 0) -- No downward push
+            addedBoost = forwardImpulse + Vector(0,0, 100 + (50 * releaseQuality)) -- Base upward pop
+            finalVel = originalVel * (1.0 + (0.1 * releaseQuality)) + addedBoost 
+            
+        elseif bIsMovingBackward then -- Backward Eject
+            jumpSpeedMultiplier = 1.2 + (0.1 * releaseQuality)
+            local backwardDir = -lookDir
+            backwardDir.z = 0 -- Keep it mostly horizontal
+            backwardDir:Normalize()
+            addedBoost = backwardDir * (currentSpeed * (0.4 + (0.2 * releaseQuality))) + Vector(0,0, 150 + (50 * releaseQuality))
+            finalVel = originalVel * (0.5 + (0.2 * releaseQuality)) + addedBoost -- Dampen original vel, add eject vel
 
-    -- Check for upward release (Jump + Up look angle)
-    elseif player:KeyDown(IN_JUMP) and eyeAngles.pitch < -20 then
-        releaseType = "upward"
-        speedMultiplier = 1.15
+        elseif eyeAngles.pitch > 45 then -- Dive Jump (sharper dive)
+            jumpSpeedMultiplier = 1.1 + (0.1 * releaseQuality)
+            local diveDir = lookDir
+            diveDir.z = math.min(diveDir.z, -0.5) -- Steeper dive
+            addedBoost = diveDir * (currentSpeed * (0.2 + (0.1 * releaseQuality)))
+            finalVel = originalVel * (1.0 + (0.05 * releaseQuality)) + addedBoost
+            
+        elseif eyeAngles.pitch < -30 then -- Upward Jump (higher pop)
+            jumpSpeedMultiplier = 1.1 + (0.1 * releaseQuality)
+            addedBoost = Vector(0,0, currentSpeed * (0.4 + (0.2 * releaseQuality)) + 100)
+            finalVel = originalVel * (0.8 + (0.1 * releaseQuality)) + addedBoost
 
-        -- Enhanced upward component
-        local upwardBoost = Vector(0, 0, speed * 0.35)
-        originalVel = originalVel + upwardBoost
+        else -- Neutral Jump (general pop-up)
+            jumpSpeedMultiplier = 1.0 + (0.15 * releaseQuality)
+            addedBoost = Vector(0,0, 150 + (100 * releaseQuality))
+            -- Blend lookdir influence for slight directionality
+            local horizontalLookDir = Vector(lookDir.x, lookDir.y, 0):GetNormalized()
+            addedBoost = addedBoost + horizontalLookDir * (currentSpeed * 0.2 * releaseQuality)
+            finalVel = originalVel * (0.9 + (0.1 * releaseQuality)) + addedBoost
+        end
+        
+        finalVel = finalVel:GetNormalized() * math.min(finalVel:Length(), currentSpeed * (jumpSpeedMultiplier + 0.1) + 200) -- Cap max speed gain from jump releases
+
+    else
+        -- Standard Releases (no jump key pressed, more about momentum conversion and direction)
+        local speedMultiplier = 1.0 + (0.1 * releaseQuality) -- Base preservation
+        local directionalInfluence = 0.3 + (0.2 * releaseQuality) -- How much lookDir affects outcome
+
+        if swingPhase >= 0.4 and swingPhase <= 0.6 then -- Apex Release
+            speedMultiplier = 1.0 + (0.05 * releaseQuality) -- Less speed, more about height/control
+            local upwardBias = math.Clamp(eyeAngles.pitch / -90, 0, 0.5) -- Tilt up for more height
+            local apexBoost = Vector(0,0, currentSpeed * 0.2 * releaseQuality * upwardBias)
+            finalVel = (originalVel + lookDir * currentSpeed * directionalInfluence * 0.5) * speedMultiplier + apexBoost
+            finalVel.z = math.max(finalVel.z, originalVel.z * (0.8 + 0.2 * releaseQuality) - 50) -- try to maintain some height
+
+        elseif swingPhase > 0.6 and originalVel.z < 0 then -- Downswing Release (for speed)
+            speedMultiplier = 1.1 + (0.2 * releaseQuality) -- More speed
+            finalVel = (originalVel + lookDir * currentSpeed * directionalInfluence) * speedMultiplier
+            finalVel.z = math.min(finalVel.z, originalVel.z * 0.5) -- Don't pop up too much
+
+        elseif swingPhase < 0.4 and originalVel.z > 0 then -- Upswing Release
+            speedMultiplier = 1.05 + (0.1 * releaseQuality)
+            finalVel = (originalVel + lookDir * currentSpeed * directionalInfluence * 0.8) * speedMultiplier
+        
+        else -- Default/Fallback standard release
+            finalVel = (originalVel + lookDir * currentSpeed * directionalInfluence * 0.5) * speedMultiplier
+        end
+        
+        finalVel = finalVel:GetNormalized() * math.min(finalVel:Length(), currentSpeed * (speedMultiplier + 0.1) + 100) -- Cap max speed gain
     end
 
-    -- Perfect timing and consecutive swing bonuses removed
-
-    -- Reset consecutive swings counter
-    self.State.ConsecutiveSwings = 0
-
-    -- Apply final speed multiplier
-    local finalVel = originalVel * speedMultiplier
-
-    -- Perfect release effects removed
+    -- Final sanity check on velocity
+    if finalVel:LengthSqr() > (currentSpeed * 2.5)^2 then -- Avoid extreme velocity spikes
+        finalVel = finalVel:GetNormalized() * currentSpeed * 2.5
+    end
+    if finalVel:LengthSqr() < (currentSpeed * 0.5)^2 and currentSpeed > 200 then -- Avoid extreme velocity loss if was moving fast
+         finalVel = finalVel:GetNormalized() * currentSpeed * 0.5
+    end
 
     return finalVel
 end

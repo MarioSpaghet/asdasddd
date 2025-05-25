@@ -40,7 +40,7 @@ SwingTargeting.History = {
         intelligentMode = true, -- Uses player behavior patterns to improve targeting
         activeTarget = nil, -- Currently tracked potential target
         targetLockTime = 0, -- When the current target was locked on
-        targetLockDuration = 0.5, -- How long to maintain a target lock
+        targetLockDuration = 0.65, -- How long to maintain a target lock
         previousTargets = {}, -- Recently used targets for pattern recognition
         idealArcPos = nil, -- Calculated ideal position for maintaining swing arc
         preferFowardTargets = true, -- Prioritize targets in direction of movement 
@@ -1211,7 +1211,7 @@ function SwingTargeting:InitializeWoSTargeting()
     end
     
     if not ConVarExists("webswing_wos_anticipation") then
-        CreateConVar("webswing_wos_anticipation", "0.6", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much to anticipate player's next move (0-1)", 0, 1)
+        CreateConVar("webswing_wos_anticipation", "0.7", FCVAR_ARCHIVE + FCVAR_REPLICATED, "How much to anticipate player's next move (0-1)", 0, 1)
     end
     
     -- Load settings from ConVars

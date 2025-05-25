@@ -9,16 +9,16 @@ CameraSystem.ActiveWeapons = {}
 -- Initialize camera variables
 function CameraSystem.InitializeCamera(weapon)
     weapon.CameraVars = {
-        targetDistance = 150,
-        currentDistance = 150,
-        minDistance = 150,
-        maxDistance = 200,
+        targetDistance = 165,
+        currentDistance = 165, -- Initialize currentDistance to the new targetDistance
+        minDistance = 140,
+        maxDistance = 230,
         lastPos = Vector(0, 0, 0),
         currentAngles = Angle(0, 0, 0),
         tiltAngle = 0,
-        maxTilt = 20, -- Reduced from 25 for less extreme rolls
-        smoothSpeed = 5,
-        verticalOffset = 5,
+        maxTilt = 22, 
+        smoothSpeed = 8,
+        verticalOffset = 10,
         contextualFOV = 72,
         baseFOV = 72, -- Store the base FOV
         targetFOV = 72, -- Target FOV for transitions
@@ -38,7 +38,7 @@ function CameraSystem.InitializeCamera(weapon)
         rollFactor = 0, -- Enhanced roll factor
         lastSpeedFOVBoost = 0, -- Last speed-based FOV boost
         lastAngularVelocity = Angle(0, 0, 0),
-        impactZoomDuration = 0.5, -- Duration of impact zoom effects
+        impactZoomDuration = 0.4, -- Duration of impact zoom effects
         recentTurns = {}, -- Track recent turns for roll accumulation
         maxRecentTurns = 5, -- Maximum number of recent turns to track
         lastSharpTurnMagnitude = 0, -- Magnitude of the last sharp turn
@@ -297,7 +297,7 @@ function CameraSystem.CalculateSpeedFOV(weapon, ply, baseFOV)
     -- Start increasing FOV at 300 units/s, max boost at 1000 units/s
     local minSpeedForFOVBoost = 300
     local maxSpeedForFOVBoost = 1000
-    local maxFOVBoost = 15 -- Maximum FOV increase at top speed
+    local maxFOVBoost = 20 -- Maximum FOV increase at top speed
 
     -- Calculate normalized speed factor (0-1)
     local speedFactor = 0
@@ -315,8 +315,8 @@ function CameraSystem.CalculateSpeedFOV(weapon, ply, baseFOV)
     cv.lastSpeedFOVBoost = Lerp(FrameTime() * 3, cv.lastSpeedFOVBoost, fovBoost)
 
     -- Add a subtle pulsing effect based on speed for visual feedback
-    local pulseAmount = speedFactor * 2 -- Max 2 degree pulse
-    local pulseFactor = math.sin(CurTime() * (3 + speedFactor * 2)) -- Faster pulse at higher speeds
+    local pulseAmount = speedFactor * 2.5 -- Max 2.5 degree pulse
+    local pulseFactor = math.sin(CurTime() * (4 + speedFactor * 3)) -- Faster pulse at higher speeds
     local pulseFOV = pulseAmount * pulseFactor
 
     return baseFOV + cv.lastSpeedFOVBoost + pulseFOV
@@ -351,16 +351,16 @@ function CameraSystem.CalculateImpactZoom(weapon, ply, dramaticMoment, momentTyp
         -- Different zoom effects based on moment type
         if momentType == "turn" then
             -- Sharp turns get a brief zoom-in effect
-            zoomAmount = -8 * momentMagnitude -- Negative for zoom-in
+            zoomAmount = -10 * momentMagnitude -- Negative for zoom-in
         elseif momentType == "dive" then
             -- Dives get a strong zoom-out effect
-            zoomAmount = 12 * momentMagnitude -- Positive for zoom-out
+            zoomAmount = 15 * momentMagnitude -- Positive for zoom-out
         elseif momentType == "landing" then
             -- Hard landings get a sharp zoom-in and camera shake
-            zoomAmount = -10 * momentMagnitude
+            zoomAmount = -12 * momentMagnitude
         elseif momentType == "acceleration" then
             -- Acceleration gets a moderate zoom-out
-            zoomAmount = 8 * momentMagnitude
+            zoomAmount = 10 * momentMagnitude
         end
     end
 
@@ -427,14 +427,14 @@ function CameraSystem.CalculateEnhancedRoll(weapon, ply, context, dramaticMoment
         local forwardDot = velocity:Dot(forwardVec)
 
         -- More roll when moving sideways - reduced multiplier
-        local sidewaysRoll = -rightDot * 0.01 -- Reduced from 0.015
+        local sidewaysRoll = -rightDot * 0.012 -- Reduced from 0.015
 
         -- Enhance roll based on how sideways the movement is - adjusted for smoother effect
         local sidewaysFactor = math.abs(rightDot) / (math.abs(forwardDot) + math.abs(rightDot) + 0.001)
         sidewaysRoll = sidewaysRoll * (1 + sidewaysFactor * 0.75) -- Reduced effect by 25%
 
         -- Base roll increases with speed (higher roll at higher speeds) - reduced scaling
-        targetRoll = sidewaysRoll * math.min(horizontalSpeed / 600, 1.2) -- Reduced from 500 and 1.5
+        targetRoll = sidewaysRoll * math.min(horizontalSpeed / 550, 1.3) -- Reduced from 500 and 1.5
     end
 
     -- Enhance roll during dramatic moments
@@ -447,7 +447,7 @@ function CameraSystem.CalculateEnhancedRoll(weapon, ply, context, dramaticMoment
 
             -- Sharp turns get enhanced roll based on turn direction and magnitude - reduced multiplier
             local turnDir = cv.recentTurns[1].direction or 1
-            local extraRoll = -turnDir * 10 * momentMagnitude -- Reduced from 15
+            local extraRoll = -turnDir * 12 * momentMagnitude -- Reduced from 15
             targetRoll = targetRoll + extraRoll
         elseif momentType == "dive" then
             -- Dives get a slight forward roll - reduced
@@ -594,22 +594,22 @@ function CameraSystem.CalculateView(weapon, ply, pos, angles, fov)
         -- Context-specific camera adjustments
         if context == "vertical_corridor" then
             -- Tighter camera in vertical corridors with upward angle
-            local corridorTightness = 0.7 -- 70% of normal distance
+            local corridorTightness = 0.75 -- 70% of normal distance
             dynamicTargetDistance = cv.targetDistance * corridorTightness
-            targetVerticalOffset = 20 -- Look up more in vertical corridors
-            targetFOV = cv.baseFOV * 1.05 -- Slightly wider FOV for better vertical visibility
+            targetVerticalOffset = 25 -- Look up more in vertical corridors
+            targetFOV = cv.baseFOV * 1.08 -- Slightly wider FOV for better vertical visibility
         -- Wall run feature removed
         elseif context == "ceiling" then
             -- Ceiling crawling - inverted camera
-            targetVerticalOffset = -15 -- Look down when on ceiling
-            dynamicTargetDistance = cv.targetDistance * 0.8 -- Closer camera when on ceiling
+            targetVerticalOffset = -20 -- Look down when on ceiling
+            dynamicTargetDistance = cv.targetDistance * 0.85 -- Closer camera when on ceiling
         elseif context == "landmark" then
             -- Landmark framing - pull back to see more context
-            dynamicTargetDistance = cv.targetDistance * 1.15 -- Pull back 15% more
-            targetFOV = cv.baseFOV * 1.05 -- Slightly wider FOV to see landmark
+            dynamicTargetDistance = cv.targetDistance * 1.2 -- Pull back 15% more
+            targetFOV = cv.baseFOV * 1.08 -- Slightly wider FOV to see landmark
         elseif context == "fast_moving" then
             -- Fast movement - dynamic FOV and pulled back camera
-            dynamicTargetDistance = cv.targetDistance * 1.2 -- Pull back camera more
+            dynamicTargetDistance = cv.targetDistance * 1.25 -- Pull back camera more
             -- Speed-based FOV handled by CalculateSpeedFOV function
         elseif context == "moving" then
             -- Regular movement - mild FOV change
@@ -685,7 +685,7 @@ function CameraSystem.CalculateView(weapon, ply, pos, angles, fov)
         end
 
         -- Increased transition duration from 1.8 to 2.5 seconds
-        local transitionDuration = 7
+        local transitionDuration = 0.8
         local elapsed = CurTime() - cv.transitionStartTime
         local progress = math.Clamp(elapsed / transitionDuration, 0, 1)
 

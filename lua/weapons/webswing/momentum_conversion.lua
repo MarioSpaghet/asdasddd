@@ -6,17 +6,17 @@ local MomentumConversion = {}
 -- Configuration
 MomentumConversion.Config = {
     -- Core parameters
-    ConversionEfficiency = 0.7,        -- How efficiently vertical momentum converts to horizontal (0.0-1.0)
-    MinVerticalSpeed = 300,            -- Minimum downward speed to trigger conversion (units/sec)
+    ConversionEfficiency = 0.75,        -- How efficiently vertical momentum converts to horizontal (0.0-1.0)
+    MinVerticalSpeed = 250,            -- Minimum downward speed to trigger conversion (units/sec)
     MaxVerticalSpeed = 1200,           -- Speed at which max conversion is reached (units/sec)
     
     -- Activation parameters
-    RequireJumpKey = true,             -- Require jump key to be pressed for conversion
+    RequireJumpKey = false,             -- Require jump key to be pressed for conversion
     RequireForwardKey = true,          -- Require forward key to be pressed for conversion
     ActivationDelay = 0.1,             -- Delay before conversion activates (seconds)
     
     -- Effect parameters
-    ConversionDuration = 0.4,          -- How long the conversion effect lasts (seconds)
+    ConversionDuration = 0.5,          -- How long the conversion effect lasts (seconds)
     ConversionEasing = 0.2,            -- Easing factor for smooth conversion (0.0-1.0)
     
     -- Visual feedback
@@ -26,11 +26,11 @@ MomentumConversion.Config = {
     -- Advanced parameters
     DirectionalInfluence = 0.6,        -- How much player look direction influences conversion direction (0.0-1.0)
     VerticalRetention = 0.3,           -- How much vertical momentum to retain (0.0-1.0)
-    CooldownTime = 0.5,                -- Cooldown between conversions (seconds)
+    CooldownTime = 0.3,                -- Cooldown between conversions (seconds)
     
     -- Boost parameters
     EnableBoostEffect = true,          -- Enable additional boost when conversion is perfect
-    PerfectTimingWindow = 0.15,        -- Timing window for perfect conversion (seconds)
+    PerfectTimingWindow = 0.2,        -- Timing window for perfect conversion (seconds)
     PerfectBoostMultiplier = 1.3       -- Speed multiplier for perfect timing (1.0-2.0)
 }
 
@@ -103,11 +103,11 @@ function MomentumConversion:LoadConVarSettings()
     end
     
     if not ConVarExists("webswing_conversion_efficiency") then
-        CreateConVar("webswing_conversion_efficiency", tostring(self.Config.ConversionEfficiency), FCVAR_ARCHIVE + FCVAR_REPLICATED, "Efficiency of momentum conversion (0.0-1.0)", 0, 1)
+        CreateConVar("webswing_conversion_efficiency", "0.75", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Efficiency of momentum conversion (0.0-1.0)", 0, 1)
     end
     
     if not ConVarExists("webswing_min_conversion_speed") then
-        CreateConVar("webswing_min_conversion_speed", tostring(self.Config.MinVerticalSpeed), FCVAR_ARCHIVE + FCVAR_REPLICATED, "Minimum speed for momentum conversion", 100, 500)
+        CreateConVar("webswing_min_conversion_speed", "250", FCVAR_ARCHIVE + FCVAR_REPLICATED, "Minimum speed for momentum conversion", 100, 500)
     end
     
     if not ConVarExists("webswing_conversion_boost") then

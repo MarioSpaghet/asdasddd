@@ -6,28 +6,28 @@ local PendulumPhysics = {}
 -- Configuration
 PendulumPhysics.Config = {
     -- Core pendulum parameters
-    ArcEmphasisFactor = 1.2,         -- How much to emphasize the pendulum arc (1.0 = default, higher = more pronounced arcs)
+    ArcEmphasisFactor = 1.15,         -- How much to emphasize the pendulum arc (1.0 = default, higher = more pronounced arcs)
     NaturalFrequency = 1.0,          -- Natural oscillation frequency multiplier (1.0 = default physics, higher = faster pendulum)
     ApexSlowdownFactor = 0.8,        -- Slowdown at apex of swing (1.0 = no slowdown, lower = more slowdown)
     
     -- Momentum and inertia settings
-    MomentumPreservation = 1.2,      -- How well momentum is preserved during swings (1.0 = default, higher = better preservation)
-    InertiaFactor = 1.1,             -- How much inertia affects the swing (1.0 = default, higher = more inertia)
+    MomentumPreservation = 1.3,      -- How well momentum is preserved during swings (1.0 = default, higher = better preservation)
+    InertiaFactor = 1.05,             -- How much inertia affects the swing (1.0 = default, higher = more inertia)
     
     -- Gravity adjustment for more realistic arcs
     GravityModulation = true,        -- Enable gravity modulation during swing
-    VerticalGravityFactor = 0.85,    -- Gravity factor when moving upward (lower = more "float" at top of arc)
-    ApexGravityFactor = 0.7,         -- Gravity factor at the apex of the swing
-    DownwardGravityFactor = 1.2,     -- Gravity factor when dropping downward
+    VerticalGravityFactor = 0.8,    -- Gravity factor when moving upward (lower = more "float" at top of arc)
+    ApexGravityFactor = 0.65,         -- Gravity factor at the apex of the swing
+    DownwardGravityFactor = 1.25,     -- Gravity factor when dropping downward
     
     -- Rotation and swing control 
     RotationalDamping = 0.8,         -- Damping of rotational motion (0-1, lower = less wobble)
-    SwingAmplification = 1.15,       -- Amplification of swing force (1.0 = default, higher = stronger swings)
+    SwingAmplification = 1.25,       -- Amplification of swing force (1.0 = default, higher = stronger swings)
     ReflexCorrection = true,         -- Apply reflexive correction to make swings feel more controlled
     
     -- Advanced physics tweaks
-    CentripetalForceEmphasis = 1.15, -- Emphasis on centripetal force during circular motion
-    TangentialBoostFactor = 1.2,     -- Boost to tangential force for better arc transitions
+    CentripetalForceEmphasis = 1.25, -- Emphasis on centripetal force during circular motion
+    TangentialBoostFactor = 1.3,     -- Boost to tangential force for better arc transitions
     BobbleReduction = 0.7,           -- Reduction of side-to-side bobble (1.0 = default, lower = less bobble)
     
     -- Web behavior
@@ -37,12 +37,12 @@ PendulumPhysics.Config = {
     -- Animation and feel
     BodyRotationFactor = 1.2,        -- How much the body rotates during swings
     SwingEntrySmoothing = 1.5,       -- Smoothing factor for entering a swing
-    SwingExitBoost = 1.15,            -- Speed boost factor when exiting at optimal angle
+    SwingExitBoost = 1.2,            -- Speed boost factor when exiting at optimal angle
     
     -- Web of Shadows style fall-to-swing enhancements
-    FallingSwingBoost = 1.5,        -- Additional boost applied when entering a swing from a fast fall
-    FallingArcEmphasis = 1.4,       -- Enhanced arc emphasis during fast falls
-    FallingInertiaReduction = 0.7,  -- Reduce inertia during fast falls for more responsive arcs
+    FallingSwingBoost = 1.7,        -- Additional boost applied when entering a swing from a fast fall
+    FallingArcEmphasis = 1.45,       -- Enhanced arc emphasis during fast falls
+    FallingInertiaReduction = 0.65,  -- Reduce inertia during fast falls for more responsive arcs
 }
 
 -- State variables

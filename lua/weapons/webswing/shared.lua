@@ -15,6 +15,7 @@ local WebReleaseDynamics = include("web_release_dynamics.lua") -- Add the Web Re
 local WebOfShadowsPhysics = include("web_of_shadows_physics.lua") -- Add the Web of Shadows Physics Enhancement System
 local MomentumConversion = include("momentum_conversion.lua") -- Add the Momentum Conversion System
 local ObstaclePrediction = include("obstacle_prediction.lua") -- Add the Obstacle Prediction System
+local AirTricksSystem = include("air_tricks_system.lua") -- Add the Air Tricks System
 
 if SERVER then
 	-- Add network strings
@@ -230,6 +231,10 @@ function SWEP:Initialize()
 	-- Initialize the Obstacle Prediction system
 	self.ObstaclePrediction = ObstaclePrediction
 
+	-- Initialize the Air Tricks System
+	self.AirTricksSystem = AirTricksSystem
+	self.AirTricksSystem:Initialize(self)
+
 	-- Run analysis on server: map analysis and environmental analysis (wind)
 	if SERVER then
 		self:AnalyzeMap()
@@ -247,6 +252,12 @@ function SWEP:Initialize()
 
 	self.BoneName = ""
 	self.LastTargetNameUpdate = -1
+
+	-- Point Launch Variables
+	self.IsPointLaunching = false
+	self.PointLaunchTargetPos = vector_origin
+	self.PointLaunchStartTime = 0
+	self.NextPointLaunchTime = 0
 end
 
 --	Reload changes our bone number
@@ -318,8 +329,13 @@ function SWEP:Think()
     end
     
     -- Update Web of Shadows targeting system
-    if SwingTargeting then
+    if SwingTargeting and not self.IsPointLaunching then -- Don't update WoS targeting if point launching
         SwingTargeting:UpdateWoSTargeting(self.Owner, FrameTime())
+    end
+
+    -- Update Air Tricks System
+    if self.AirTricksSystem then
+        self.AirTricksSystem:Think()
     end
 
 -- Camera system is now imported from camera_system.lua
@@ -359,7 +375,65 @@ function SWEP:Think()
     end
 
     -- Apply physics forces using the PhysicsSystem module
-    if self.RagdollActive and IsValid(self.Ragdoll) then
+    if self.IsPointLaunching then
+        -- Point Launch Physics
+        if not IsValid(self.Owner) then
+            self.IsPointLaunching = false
+            if self.PointLaunchOriginalState then -- Restore movetype if owner becomes invalid during launch
+                 self.Owner:SetMoveType(self.PointLaunchOriginalState.moveType)
+                 self.PointLaunchOriginalState = nil
+            end
+            return
+        end
+
+        local ply = self.Owner
+        local targetPos = self.PointLaunchTargetPos
+        local currentPos = ply:GetPos() -- Use GetPos for more accurate player position
+        local dirToTarget = (targetPos - currentPos):GetNormalized()
+        local distToTarget = targetPos:Distance(currentPos)
+        local pointLaunchDuration = CurTime() - self.PointLaunchStartTime
+        
+        -- Store original movetype and noclip state if not already stored for point launch
+        if not self.PointLaunchOriginalState then
+            self.PointLaunchOriginalState = {
+                moveType = ply:GetMoveType(),
+                noclip = ply:GetMoveType() == MOVETYPE_NOCLIP -- Check if player was already noclipping
+            }
+        end
+        
+        ply:SetMoveType(MOVETYPE_FLY) -- Allows direct velocity setting without gravity for the frame
+        ply:SetGroundEntity(nil) -- Ensure player is not considered on ground
+
+        local launchStrength = 3000 -- Tweakable
+        local launchVelocity = dirToTarget * launchStrength
+        ply:SetVelocity(launchVelocity)
+
+
+        -- Termination logic
+        if pointLaunchDuration > 0.5 or distToTarget < 50 then
+            self.IsPointLaunching = false
+            
+            -- Restore original movetype and noclip state
+            if self.PointLaunchOriginalState then
+                -- Only restore noclip if they weren't already in noclip when point launch started
+                if self.PointLaunchOriginalState.moveType == MOVETYPE_NOCLIP and self.PointLaunchOriginalState.noclip then
+                     ply:SetMoveType(MOVETYPE_NOCLIP) -- If they started in noclip, put them back
+                else
+                    ply:SetMoveType(self.PointLaunchOriginalState.moveType) -- Otherwise, restore their original movetype
+                end
+                self.PointLaunchOriginalState = nil -- Clear it
+            else
+                 ply:SetMoveType(MOVETYPE_WALK) -- Fallback
+            end
+
+            -- Optional exit velocity boost
+            local exitBoost = ply:GetAimVector() * 700 + Vector(0, 0, 250)
+            ply:SetVelocity(exitBoost)
+            
+            -- TODO: Remove temporary web effect if one was added
+        end
+
+    elseif self.RagdollActive and IsValid(self.Ragdoll) then
         -- Check if Web of Shadows physics is enabled
         if GetConVar("webswing_use_wos_physics"):GetBool() then
             -- Apply Web of Shadows physics enhancements
@@ -382,16 +456,16 @@ function SWEP:Think()
         self.WebReleaseDynamics:Update(self.Owner, FrameTime())
     end
 
-    -- Update momentum conversion system (when not swinging)
-    if not self.RagdollActive and self.MomentumConversion and IsValid(self.Owner) then
-        -- Process the player for momentum conversion
-        if SERVER then
-            self.MomentumConversion:ProcessPlayer(self.Owner)
-        end
-    end
+    -- Update momentum conversion system (when not swinging or point launching)
+    -- if not self.RagdollActive and not self.IsPointLaunching and self.MomentumConversion and IsValid(self.Owner) then
+    --     -- Process the player for momentum conversion
+    --     if SERVER then
+    --         self.MomentumConversion:ProcessPlayer(self.Owner)
+    --     end
+    -- end
 
-    -- Process rope shortening/slackening
-    if IsValid(self.Owner) and self.Owner:KeyDown(IN_ATTACK2) and self.ConstraintController then
+    -- Process rope shortening/slackening (only if swinging)
+    if self.RagdollActive and IsValid(self.Owner) and self.Owner:KeyDown(IN_ATTACK2) and self.ConstraintController then
         if not IsValid(self.ConstraintController.constraint) or not IsValid(self.ConstraintController.rope) then
             -- Recreate constraint if something went wrong
             self:CleanupWebSwing()
@@ -421,7 +495,52 @@ SWEP.BaseRange = 1000  -- Reduced from 2000 to 1000 for better control
 SWEP.MaxWebLength = 1500  -- Maximum length the web can be stretched
 
 function SWEP:PrimaryAttack()
-    -- Do nothing
+    if not IsFirstTimePredicted() then return end
+    if not IsValid(self.Owner) then return end
+
+    -- Cooldown check
+    if (self.NextPointLaunchTime or 0) > CurTime() then
+        return
+    end
+
+    -- State check: Do nothing if already swinging or point launching
+    if self.RagdollActive or self.IsPointLaunching then
+        return
+    end
+
+    local ply = self.Owner
+    local eyePos = ply:EyePos()
+    local aimVec = ply:GetAimVector()
+    local range = (self.BaseRange or 1000) * 0.75
+
+    local tr = util.TraceLine({
+        start = eyePos,
+        endpos = eyePos + aimVec * range,
+        filter = ply,
+        mask = MASK_SOLID,
+        collisiongroup = COLLISION_GROUP_NONE,
+        ignoreworld = false
+    })
+
+    if tr.Hit then
+        self.IsPointLaunching = true
+        self.PointLaunchTargetPos = tr.HitPos
+        self.PointLaunchStartTime = CurTime()
+        self.NextPointLaunchTime = CurTime() + 1.0 -- 1 second cooldown
+
+        -- Play sound (reusing existing swing sound for now)
+        -- TODO: Request a new sound: a short, sharp "thwip" and a "whoosh"
+        self:PlayWebShootSound() 
+
+        -- Optional: Spawn temporary web effect (Placeholder for now)
+        -- if SERVER then
+        --     local effectdata = EffectData()
+        --     effectdata:SetOrigin(eyePos)
+        --     effectdata:SetStart(tr.HitPos) -- Using Start for the target position
+        --     effectdata:SetEntity(self) -- Pass the weapon entity
+        --     util.Effect("web_line", effectdata) -- Assuming 'web_line' is a simple effect
+        -- end
+    end
 end
 
 function SWEP:SecondaryAttack()
