@@ -249,25 +249,8 @@ function SWEP:Initialize()
 	self.LastTargetNameUpdate = -1
 end
 
---	Reload changes our bone number
-SWEP.DelayChangeBone = 0
-SWEP.ChangeBone_Delay = 0.2
-SWEP.PhysObjLoopLimit = 15
-SWEP.TargetPhysObj = 11
 function SWEP:Reload()
-	if SERVER then
-		if self.DelayChangeBone<CurTime() then
-			self.DelayChangeBone = CurTime()+self.ChangeBone_Delay
-			self:ConfigureMaxObjs()
-			self.TargetPhysObj = self.TargetPhysObj+0
-			if self.TargetPhysObj>=self.PhysObjLoopLimit then
-				--print(self.TargetPhysObj.." is >= "..self.PhysObjLoopLimit)
-				self.TargetPhysObj = 0
-			end
-			self:CallOnClient('ReceiveCurObj', tostring(self.TargetPhysObj))
-			--print("Current target bone = ", self.TargetPhysObj, "[Todo: Show this on the HUD]")
-		end
-	end
+
 end
 
 function SWEP:ConfigureMaxObjs(answer)
@@ -337,14 +320,11 @@ function SWEP:Think()
 	if self.RagdollActive and not self.Owner:KeyDown(IN_ATTACK2) then
 		self:StopWebSwing()
 	end
-
 	if self.ConstraintController then
 		self.ConstraintController.speed = self:GetShortenSpeed()
 
 		if self.Owner:KeyDown(IN_FORWARD) then
 			self.ConstraintController:Shorten()
-		elseif self.Owner:KeyDown(IN_BACK) then
-			self.ConstraintController:Slacken()
 		end
 	end
 
@@ -396,14 +376,10 @@ function SWEP:Think()
             -- Recreate constraint if something went wrong
             self:CleanupWebSwing()
             return
-        end
-
-        self.ConstraintController.speed = self:GetShortenSpeed()
+        end        self.ConstraintController.speed = self:GetShortenSpeed()
 
         if self.Owner:KeyDown(IN_FORWARD) then
             self.ConstraintController:Shorten()
-        elseif self.Owner:KeyDown(IN_BACK) then
-            self.ConstraintController:Slacken()
         end
     end
 end
