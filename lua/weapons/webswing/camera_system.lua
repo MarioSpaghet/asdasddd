@@ -1,7 +1,7 @@
 -- Camera System for Web Shooters
 
 local CameraSystem = {}
-local MapAnalysisData = include("map_analysis.lua") -- Import the map analysis module
+local SimpleMapAnalysis = include("simple_map_analysis.lua") -- Import the simple map analysis module
 
 -- Track active camera weapons
 CameraSystem.ActiveWeapons = {}
@@ -89,23 +89,17 @@ function CameraSystem.AnalyzePlayerContext(weapon, ply, pos)
         if not cv then return "standard" end
     end
 
-    -- Get map analysis data
-    local mapAnalysis = weapon.MapAnalysis
-    if not mapAnalysis or not mapAnalysis.analyzed then return "standard" end
+    -- Get simple analysis data
+    local analysis = SimpleMapAnalysis.Cache[game.GetMap()]
+    if not analysis then return "standard" end
 
     -- Wall run feature removed
     cv.onWall = false
 
-    -- Check vertical corridors
-    local inVerticalCorridor, corridorInfo = MapAnalysisData:IsInVerticalCorridor(pos, mapAnalysis)
-    cv.isInVerticalCorridor = inVerticalCorridor
-
-    -- Get nearest landmark
-    local landmark = MapAnalysisData:GetNearestLandmark(pos, mapAnalysis)
-    cv.nearLandmark = landmark and landmark.distance < landmark.size * 1.5
-
-    -- Get terrain type
-    cv.terrainType = MapAnalysisData:GetTerrainTypeAtPosition(pos) or "flat" -- Ensure always has a value
+    -- Simplified checks based on simple analysis
+    cv.isInVerticalCorridor = false -- Simplified for now
+    cv.nearLandmark = false -- Simplified for now
+    cv.terrainType = "flat" -- Simplified for now
 
     -- Check if player is crawling on ceiling (inverted Z normal)
     local groundNormal = ply:GetGroundNormal()
@@ -577,13 +571,14 @@ function CameraSystem.CalculateView(weapon, ply, pos, angles, fov)
     cv.tiltAngle = cv.tiltAngle or 0
 
     -- Context-Aware Adjustments for Camera Distance, FOV, and Position
-    if weapon.MapAnalysis and weapon.MapAnalysis.analyzed then
-        -- Base adjustments using original map analysis data
-        local buildingDensity = weapon.MapAnalysis.buildingDensity or 0.5
-        local openSpaceRatio = weapon.MapAnalysis.openSpaceRatio or 0.5
+    local analysis = SimpleMapAnalysis.Cache[game.GetMap()]
+    if analysis then
+        -- Base adjustments using simple analysis data
+        local wallDensity = analysis.wallDensity or 0.5
+        local openSpaceRatio = analysis.openness or 0.5
 
         -- Basic environmental adjustments
-        local densityMultiplier = Lerp(buildingDensity, 1.0, 0.8)  -- Nearly full distance in open areas, 20% shorter in dense areas.
+        local densityMultiplier = Lerp(wallDensity, 1.0, 0.8)  -- Nearly full distance in open areas, 20% shorter in dense areas.
         local openMultiplier = Lerp(openSpaceRatio, 1.0, 1.2)      -- Up to 20% extra distance in open areas.
 
         -- Enhanced contextual adjustments based on context type
@@ -627,17 +622,15 @@ function CameraSystem.CalculateView(weapon, ply, pos, angles, fov)
         -- Apply environmental adjustments to the context-specific settings
         dynamicTargetDistance = dynamicTargetDistance * densityMultiplier * openMultiplier
 
-        -- Apply vertical corridor adjustments if needed
-        if weapon.MapAnalysis.verticalityScore and weapon.MapAnalysis.verticalityScore > 0.6 and not cv.isInVerticalCorridor then
-            -- In highly vertical maps, increase vertical offset outside of corridors
-            targetVerticalOffset = targetVerticalOffset + (weapon.MapAnalysis.verticalityScore - 0.6) * 10
+        -- Apply simple vertical adjustments based on vertical range
+        if analysis.verticalRange and analysis.verticalRange > 600 then
+            -- In tall maps, increase vertical offset
+            targetVerticalOffset = targetVerticalOffset + ((analysis.verticalRange - 600) / 400) * 10
         end
 
-        -- Apply ceiling space adjustments
-        if weapon.MapAnalysis.ceilingSpaces and weapon.MapAnalysis.ceilingSpaces.ratio and
-           weapon.MapAnalysis.ceilingSpaces.ratio > 0.3 and not cv.ceilingCrawling then
-            -- In maps with lots of ceiling space, prepare for vertical play
-            targetFOV = targetFOV * (1 + (weapon.MapAnalysis.ceilingSpaces.ratio - 0.3) * 0.1)
+        -- Simplified FOV adjustments
+        if openSpaceRatio > 0.7 then
+            targetFOV = targetFOV * 1.1
         end
 
         -- Calculate speed-based FOV adjustments
@@ -852,9 +845,9 @@ function CameraSystem.GetTerrainCameraSettings(terrainType, mapAnalysis)
         settings.vertOffset = 0
     end
 
-    -- Adjust for map verticality
-    if mapAnalysis and mapAnalysis.verticalityScore then
-        settings.vertOffset = settings.vertOffset + mapAnalysis.verticalityScore * 5
+    -- Adjust for vertical range
+    if mapAnalysis and mapAnalysis.verticalRange and mapAnalysis.verticalRange > 500 then
+        settings.vertOffset = settings.vertOffset + ((mapAnalysis.verticalRange - 500) / 1000) * 10
     end
 
     return settings

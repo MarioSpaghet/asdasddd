@@ -95,6 +95,13 @@ function SWEP:Think()
     end
 end
 
+-- Add HUD drawing for the proper momentum system
+function SWEP:DrawHUD()
+    if IsValid(self.ProperMomentum) and IsValid(self.Owner) then
+        self.ProperMomentum:DrawMomentumHUD(self.Owner)
+    end
+end
+
 -- Add customization menu
 hook.Add("PopulateToolMenu", "WebSwing_Options", function()
     spawnmenu.AddToolMenuOption("Options", "Spider-Man", "WebSwing_Config", "Web Shooters", "", "", function(panel)
